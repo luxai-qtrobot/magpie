@@ -1,7 +1,7 @@
 from magpie.transport.stream_writer import StreamWriter
 from magpie.utils.logger import Logger
 from magpie.serializer.msgpack_serializer import MsgpackSerializer
-from .zmq_utils import ZMQContext, zmq
+from .zmq_utils import zmq
 
 class ZMQPublisher(StreamWriter):
     """
@@ -29,7 +29,7 @@ class ZMQPublisher(StreamWriter):
         self.endpoint = endpoint  # Corrected typo from 'endpint' to 'endpoint'
         self.serializer = serializer
         # Use a shared ZMQ context if the endpoint is 'inproc', otherwise create a new context
-        self.context = ZMQContext.get_instance() if endpoint.startswith('inproc:') else zmq.Context()
+        self.context = zmq.Context.instance() if endpoint.startswith('inproc:') else zmq.Context()
         self.socket = self.context.socket(zmq.PUB)
         self.socket.bind(endpoint)
         super().__init__(name='ZMQPublisher', queue_size=queue_size)
