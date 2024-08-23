@@ -1,0 +1,67 @@
+import os, sys
+import time
+
+
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+
+from magpie.utils.logger import Logger
+from magpie.nodes.base_node import BaseNode
+from magpie.transport.zmq.zmq_publisher import ZMQPublisher
+from magpie.transport.zmq.zmq_subscriber import ZMQSubscriber
+
+
+class PubNode(BaseNode):
+    def __init__(self, endpoint:str):
+        self.publisher = ZMQPublisher(endpoint)
+        super().__init__()
+
+    def process(self):
+        Logger.info(f"{self.name} is publishing...")
+        self.publisher.write({'name': 'Bob', 'last': 'Marley'})
+        time.sleep(1)
+
+    def cleanup(self):
+        self.publisher.close()
+        Logger.info(f"{self.name} is cleaning up...")
+        
+    def terminate(self, timeout=None):
+        self.publisher.close()
+        return super().terminate(timeout)
+
+
+class SubNode(BaseNode):
+    def __init__(self, endpoint:str):
+        self.subscriber = ZMQSubscriber(endpoint)
+        super().__init__()
+        
+    
+    def process(self):        
+        data = self.subscriber.read()
+        if data:
+            Logger.info(f"{self.name} received {data}")
+
+    def cleanup(self):
+        self.subscriber.close()
+        Logger.info(f"{self.name} is cleaning up...")
+
+    def terminate(self, timeout=None):
+        self.subscriber.close()
+        return super().terminate(timeout)
+
+
+if __name__ == '__main__':
+
+    node1 = PubNode(endpoint="tcp://*:5555")
+    node2 = SubNode(endpoint="tcp://127.0.0.1:5555")
+    # node1 = PubNode(endpoint="inproc://my_publisher")
+    # node2 = SubNode(endpoint="inproc://my_publisher")
+
+    try:
+        time.sleep(100)
+    except KeyboardInterrupt:
+        print("Keyboard interupt")
+    finally:        
+        node1.terminate()
+        node2.terminate()
+        
