@@ -1,7 +1,7 @@
 from magpie.transport.stream_reader import StreamReader
 from magpie.utils.logger import Logger
 from magpie.serializer.msgpack_serializer import MsgpackSerializer
-from .zmq_utils import ZMQContext, zmq
+from .zmq_utils import zmq
 
 class ZMQSubscriber(StreamReader):
     """
@@ -31,7 +31,7 @@ class ZMQSubscriber(StreamReader):
         self.topic = topic
         self.serializer = serializer
         # Use a shared ZMQ context if the endpoint is 'inproc', otherwise create a new context
-        self.context = ZMQContext.get_instance() if endpoint.startswith('inproc:') else zmq.Context()
+        self.context = zmq.Context.instance() if endpoint.startswith('inproc:') else zmq.Context()
         self.socket = self.context.socket(zmq.SUB)
         self.socket.connect(endpoint)
         # Set the subscription topic; empty string subscribes to all topics
