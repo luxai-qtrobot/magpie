@@ -15,7 +15,7 @@ class AudioFrameRaw(Frame):
         self.num_frames = int(len(self.data) / (self.channels * self.bit_depth/8))
 
     def __str__(self):
-        return f"{self.name}(size: {len(self.chunk)}, frames: {self.num_frames}, sample_rate: {self.sample_rate}, channels: {self.channels})"
+        return f"{self.name}(size: {len(self.data)}, frames: {self.num_frames}, sample_rate: {self.sample_rate}, channels: {self.channels})"
     
 
 
