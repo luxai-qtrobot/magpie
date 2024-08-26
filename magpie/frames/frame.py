@@ -2,11 +2,14 @@
 from dataclasses import dataclass, field, fields
 from ulid import ULID
 
+# NOTE: in python < 3.10, dataclass does not support 'kw_only'
+#       therefore, all inherited class's attributes must have default value
+#       because the Frame class has fields with default value.   
 @dataclass
 class Frame:    
-    gid: int = None
-    id: int = None       
-    name: str = None
+    gid: int = field(default=None)
+    id: int = field(default=None)
+    name: str = field(default=None)
 
     def __post_init__(self):  
         self.gid = self.gid if self.gid else str(ULID())  # TODO: check if it's better to use ULID().bytes. 
