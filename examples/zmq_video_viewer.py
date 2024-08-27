@@ -15,9 +15,10 @@ from magpie.frames.image import ImageFrameCV
 
 class ZmqVideoViewer(SinkNode):
 
-    def setup(self):
+    def setup(self, show_statistics=False):
+        self.show_statistics = show_statistics
         self.prev_time = None
-        self.fps_values = deque(maxlen=10)
+        self.fps_values = deque(maxlen=10)        
 
     def process(self):        
         data = self.stream_reader.read()
@@ -25,13 +26,13 @@ class ZmqVideoViewer(SinkNode):
         frame =  ImageFrameCV.from_dict(data)
         image = frame.to_cv_image()
         # add info 
-        if self.prev_time:
+        if self.show_statistics and self.prev_time:
             fps = 1.0 / (perf_counter() - self.prev_time)
             self.fps_values.append(fps)
             avg_fps = int(sum(self.fps_values) / len(self.fps_values))
             height, width, _ = image.shape
             position = position = (10, height - 10)
-            cv2.putText(image, f"{width}x{height} {avg_fps}fps", position, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1, cv2.LINE_AA)
+            cv2.putText(image, f"[{frame.timestamp}] {width}x{height} {avg_fps}fps", position, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (112,82,204), 1, cv2.LINE_AA)
         self.prev_time = perf_counter()
         # Display the image
         cv2.imshow(self.name, image)
@@ -40,7 +41,8 @@ class ZmqVideoViewer(SinkNode):
 if __name__ == '__main__':
 
     node = ZmqVideoViewer(name='VideoViewer', 
-                           stream_reader=ZMQSubscriber("tcp://127.0.0.1:5555"))    
+                           stream_reader=ZMQSubscriber("tcp://127.0.0.1:5555"),
+                           setup_kwargs={'show_statistics': True})    
     
     while True:
         try:
