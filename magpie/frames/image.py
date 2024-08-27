@@ -31,7 +31,7 @@ class ImageFrameCV(ImageFrameRaw):
             sys.exit()
         # Encode the frame as a JPEG to serialize it
         _, buffer = cv2.imencode(format, cv_image)
-        return ImageFrameCV(data=buffer.tobytes(), format=format)      
+        return cls(data=buffer.tobytes(), format=format)      
 
     def to_cv_image(self):
         try:
