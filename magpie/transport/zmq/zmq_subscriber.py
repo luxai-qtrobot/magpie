@@ -26,7 +26,7 @@ class ZMQSubscriber(StreamReader):
             topic (str, optional): The topic to subscribe to. Defaults to an empty string, which subscribes to all topics.
             serializer (MsgpackSerializer, optional): The serializer used to convert byte data back into objects. 
                                                       Defaults to `MsgpackSerializer`.
-        """        
+        """
         self.endpoint = endpoint  # Corrected typo from 'endpint' to 'endpoint'
         self.topic = topic
         self.serializer = serializer
@@ -37,7 +37,7 @@ class ZMQSubscriber(StreamReader):
         # Set the subscription topic; empty string subscribes to all topics
         self.socket.setsockopt(zmq.SUBSCRIBE, self.topic.encode('utf-8'))
         super().__init__(name='ZMQSubscriber', queue_size=queue_size)
-        Logger.debug(f"{self.name} is ready")
+        Logger.debug(f"ZMQSubscriber is ready")
 
     def _transport_read_blocking(self) -> object:
         """

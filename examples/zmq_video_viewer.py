@@ -1,3 +1,4 @@
+import argparse
 import os, sys
 import time
 import cv2
@@ -18,7 +19,8 @@ class ZmqVideoViewer(SinkNode):
     def setup(self, show_statistics=False):
         self.show_statistics = show_statistics
         self.prev_time = None
-        self.fps_values = deque(maxlen=10)        
+        self.fps_values = deque(maxlen=10)     
+        Logger.info(f"{self.name} showing video from {self.stream_reader.endpoint}")
 
     def process(self):        
         data = self.stream_reader.read()
@@ -39,10 +41,19 @@ class ZmqVideoViewer(SinkNode):
         cv2.waitKey(1)
 
 if __name__ == '__main__':
-
+    parser = argparse.ArgumentParser()
+    parser.add_argument("endpoint", 
+                        help="ZeroMQ subscribing socket endpoint (e.g. tcp://127.0.0.1:5555)",
+                        type=str)
+    parser.add_argument("-v", "--verbose", 
+                        help="show verbose information on video viewer",
+                        default=False,       
+                        type=bool)
+    
+    args = parser.parse_args()
     node = ZmqVideoViewer(name='VideoViewer', 
-                           stream_reader=ZMQSubscriber("tcp://127.0.0.1:5555"),
-                           setup_kwargs={'show_statistics': True})    
+                           stream_reader=ZMQSubscriber(args.endpoint, queue_size=1),
+                           setup_kwargs={'show_statistics': args.verbose})
     
     while True:
         try:

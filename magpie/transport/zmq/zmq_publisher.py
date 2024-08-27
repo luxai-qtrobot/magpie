@@ -33,7 +33,7 @@ class ZMQPublisher(StreamWriter):
         self.socket = self.context.socket(zmq.PUB)
         self.socket.bind(endpoint)
         super().__init__(name='ZMQPublisher', queue_size=queue_size)
-        Logger.debug(f"{self.name} is ready")
+        Logger.debug(f"ZMQPublisher is ready")
 
     def _transport_write(self, data: object, topic=''):
         """
