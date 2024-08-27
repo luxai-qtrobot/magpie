@@ -47,8 +47,7 @@ if __name__ == '__main__':
                         type=str)
     parser.add_argument("-v", "--verbose", 
                         help="show verbose information on video viewer",
-                        default=False,       
-                        type=bool)
+                        action="store_true")
     
     args = parser.parse_args()
     node = ZmqVideoViewer(name='VideoViewer', 
