@@ -1,4 +1,5 @@
 
+import argparse
 import os, sys
 import time
 import cv2
@@ -26,6 +27,7 @@ class ZmqVideoCapture(SourceNode):
         actual_h = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
         actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
         Logger.info(f"{self.name} initilized with size=({actual_w}, {actual_h}) and fps={actual_fps}")
+        Logger.info(f"{self.name} streaming video on {self.stream_writer.endpoint}")    
 
     def process(self):
         ret, image = self.cap.read()
@@ -35,10 +37,21 @@ class ZmqVideoCapture(SourceNode):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-a", "--address", 
+                        help="ZeroMQ publishing socket endpoint (e.g. tcp://*:5555)",
+                        default="tcp://*:5555",                        
+                        type=str)
+    parser.add_argument("-c", "--camera", 
+                        help="opencv capturing camera id (e.g. 0)",
+                        default=0,       
+                        type=int)
+    
+    args = parser.parse_args()
 
-    node = ZmqVideoCapture(name='VideoCapture', 
-                            stream_writer=ZMQPublisher("tcp://*:5555"),
-                            setup_kwargs={'camera': 0, 'size': (1280, 720)})
+    node = ZmqVideoCapture(name='VideoCapture',
+                            stream_writer=ZMQPublisher(args.address),
+                            setup_kwargs={'camera': args.camera, 'size': (1280, 720)})
     while True:
         try:
             time.sleep(10)

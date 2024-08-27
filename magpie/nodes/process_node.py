@@ -27,10 +27,10 @@ class ProcessNode(BaseNode):
             stream_writer (StreamWriter): An object responsible for writing data to a stream.
             name (str, optional): The name of the node. Defaults to None, in which case the class name is used.
             paused (bool, optional): Whether the node should start in a paused state. Defaults to False.
-        """
-        super().__init__(name=name, paused=paused, setup_kwargs=setup_kwargs)
+        """        
         self.stream_reader = stream_reader
         self.stream_writer = stream_writer
+        super().__init__(name=name, paused=paused, setup_kwargs=setup_kwargs)
 
     def terminate(self, timeout=None):
         """
