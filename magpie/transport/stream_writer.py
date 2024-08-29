@@ -90,6 +90,7 @@ class StreamWriter(ABC):
             with self.lock:
                 # Check if the queue is full.
                 if self.writer_queue.full():
+                    # Logger.debug(f"{self.name} queue is full. dropping old message.")
                     # Remove the oldest item to make room for the new data.
                     self.writer_queue.get_nowait()
                 # Add the new data to the queue.
