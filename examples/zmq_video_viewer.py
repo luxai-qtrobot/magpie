@@ -51,7 +51,7 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     node = ZmqVideoViewer(name='VideoViewer', 
-                           stream_reader=ZMQSubscriber(args.endpoint, queue_size=1),
+                           stream_reader=ZMQSubscriber(args.endpoint, queue_size=0),
                            setup_kwargs={'show_statistics': args.verbose})
     
     while True:

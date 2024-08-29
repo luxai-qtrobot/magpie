@@ -64,6 +64,7 @@ class StreamReader(ABC):
                 if not data:
                     continue
                 if self.reader_queue.full():
+                    # Logger.debug(f"{self.name} queue is full. dropping old message.")
                     self.reader_queue.get_nowait()  # Remove the oldest item if the queue is full
                 self.reader_queue.put(data)
             except Exception as e:
