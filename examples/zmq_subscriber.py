@@ -10,7 +10,7 @@ from magpie.utils.logger import Logger
 
 
 if __name__ == '__main__':
-    subscriber = ZMQSubscriber("tcp://127.0.0.1:5555")
+    subscriber = ZMQSubscriber("tcp://127.0.0.1:5555", topic='/mytopic')
 
     while True: 
         try:

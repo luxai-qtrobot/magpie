@@ -15,7 +15,7 @@ if __name__ == '__main__':
     id = 1
     while True: 
         try:
-            publisher.write({'name': 'Ali', 'last': 'paikan'})
+            publisher.write({'name': 'Bob', 'last': 'Last'}, topic='/mytopic')
             Logger.info(f'publishing {id} ...')
             id = id + 1
             time.sleep(1)
@@ -23,4 +23,3 @@ if __name__ == '__main__':
             Logger.info('stopping...')   
             publisher.close()     
             break
-    

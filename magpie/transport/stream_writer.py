@@ -33,7 +33,7 @@ class StreamWriter(ABC):
             self.thread.start()
 
     @abstractmethod
-    def _transport_write(self, data: object):
+    def _transport_write(self, data: object, topic:str):
         """
         Abstract method to be implemented by subclasses to define how to write data to the transport.
 
@@ -64,14 +64,14 @@ class StreamWriter(ABC):
         while not self.writer_close_event.is_set():
             try:
                 # Get data from the queue, waiting up to 2 seconds if the queue is empty.
-                data = self.writer_queue.get(timeout=2)
+                data, topic = self.writer_queue.get(timeout=2)
                 # Write the retrieved data to the transport.
-                self._transport_write(data)
+                self._transport_write(data, topic)
             except Empty:
                 # Continue the loop if the queue is empty, waiting for new data.
                 pass
 
-    def write(self, data: object):
+    def write(self, data: object, topic:str = None):
         """
         Queues data for writing or writes it directly to the transport, depending on the queue size.
 
@@ -84,7 +84,7 @@ class StreamWriter(ABC):
         """
         if self.queue_size <= 0:
             # Write data directly if no queue is used.
-            return self._transport_write(data)
+            return self._transport_write(data, topic)
 
         try:
             with self.lock:
@@ -94,7 +94,7 @@ class StreamWriter(ABC):
                     # Remove the oldest item to make room for the new data.
                     self.writer_queue.get_nowait()
                 # Add the new data to the queue.
-                self.writer_queue.put(data)
+                self.writer_queue.put((data, topic))
         except Exception as e:
             # Log any exceptions that occur during the write process.
             Logger.warning(f"{self.name} write: {str(e)}")

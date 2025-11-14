@@ -1,4 +1,5 @@
 python-ulid
-numpy 
 msgpack
 pyzmq
+# numpy  # for imagetransport
+# opencv-python # for opencv capture/transport
