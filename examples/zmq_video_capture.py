@@ -46,12 +46,26 @@ if __name__ == '__main__':
                         help="opencv capturing camera id (e.g. 0)",
                         default=0,       
                         type=int)
-    
+
+    parser.add_argument("-f", "--framerate", 
+                        help="opencv capturing frame rate (e.g. 30)",
+                        default=30,       
+                        type=int)
+
+    parser.add_argument("-s", "--size",
+                        help="Frame size: width height (e.g. 1280 720)",
+                        nargs=2,
+                        type=int,
+                        default=[1280, 720])
+
     args = parser.parse_args()
 
     node = ZmqVideoCapture(name='VideoCapture',
                             stream_writer=ZMQPublisher(args.address),
-                            setup_kwargs={'camera': args.camera, 'size': (1280, 720)})
+                            setup_kwargs={
+                                'camera': args.camera,
+                                'size':  tuple(args.size),
+                                'frame_rate': args.framerate})
     while True:
         try:
             time.sleep(10)
