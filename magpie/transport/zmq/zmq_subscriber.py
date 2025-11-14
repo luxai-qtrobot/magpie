@@ -67,5 +67,5 @@ class ZMQSubscriber(StreamReader):
         """
         Destructor to ensure that the socket is closed and resources are cleaned up when the object is deleted.
         """
-        self._transport_close()
+        # self._transport_close()
         Logger.debug(f"{self.name} is terminated.")

@@ -97,8 +97,8 @@ class StreamReader(ABC):
         It also calls the _transport_close method to close the underlying transport.
         """
         if self.queue_size > 0:
-            self.reader_close_event.set()  # Signal the thread to stop
-            self._transport_close()  # Close the transport
+            self.reader_close_event.set()  # Signal the thread to stop            
             self.thread.join()  # Wait for the reading thread to finish
+            self._transport_close()  # Close the transport
         else:
             self._transport_close()  # Close the transport

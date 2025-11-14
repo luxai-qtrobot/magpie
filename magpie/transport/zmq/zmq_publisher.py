@@ -35,7 +35,7 @@ class ZMQPublisher(StreamWriter):
         super().__init__(name='ZMQPublisher', queue_size=queue_size)
         Logger.debug(f"ZMQPublisher is ready")
 
-    def _transport_write(self, data: object, topic=''):
+    def _transport_write(self, data: object, topic:str):
         """
         Publishes a message to the ZeroMQ socket with an optional topic.
 
@@ -46,6 +46,7 @@ class ZMQPublisher(StreamWriter):
         """
         try:
             # Send the topic and serialized data as multipart
+            topic = '' if not topic else topic
             self.socket.send_multipart([topic.encode(), self.serializer.serialize(data)])
         except Exception as e:
             Logger.warning(f"{self.name} write failed with: {str(e)}")
