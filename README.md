@@ -4,3 +4,9 @@
 </div>
 
 # MAGPIE: Modular AI General Purpose Integration Engine
+
+## installation 
+```bash
+ pip install --upgrade pip
+ pip install git+https://github.com/luxai-qtrobot/magpie.git#egg=magpie
+```
