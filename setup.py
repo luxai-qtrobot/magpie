@@ -19,8 +19,8 @@ setup(
     include_package_data=True,
     install_requires=[
         "python-ulid>=1.1.0"
-        "msgpack>=1.1.1"
-        "pyzmq>=27.1.0"    
+        "msgpack>=1.0.5"
+        "pyzmq>=26.2.1"    
     ],
     classifiers=[
         "Development Status :: 4 - Beta",
