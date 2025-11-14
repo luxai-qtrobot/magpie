@@ -33,6 +33,10 @@ class BaseNode(ABC):
         """Performs cleanup after the thread has been terminated. Override in subclasses."""
         pass
 
+    def interrupt(self):
+        """Performs actions after the thread has been interrupted by terminate. Override in subclasses."""
+        pass
+
     @abstractmethod
     def process(self):
         """
@@ -40,6 +44,13 @@ class BaseNode(ABC):
         Must be implemented by subclasses.
         """
         raise NotImplementedError
+
+
+    def paused(self):
+        return not self.pause_event.is_set()
+
+    def terminating(self):
+        return self.terminate_event.is_set()
 
     def pause(self):
         """Pauses the processing by setting the pause_event."""
@@ -58,6 +69,7 @@ class BaseNode(ABC):
         """
         self.terminate_event.set()
         self.pause_event.set()
+        self.interrupt()
         self.thread.join(timeout=timeout)
         Logger.debug(f"{self.name} terminated.")
 
