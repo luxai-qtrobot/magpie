@@ -12,7 +12,11 @@ class ZMQSubscriber(StreamReader):
     which are then deserialized using the specified serializer.
     """
 
-    def __init__(self, endpoint: str, topic='', serializer=MsgpackSerializer(), queue_size=1):
+    def __init__(self, endpoint: str, 
+                 topic='',
+                 serializer=MsgpackSerializer(),
+                 queue_size=1,
+                 bind: bool = False):
         """
         Initializes the ZMQSubscriber class.
 
@@ -26,6 +30,8 @@ class ZMQSubscriber(StreamReader):
             topic (str, optional): The topic to subscribe to. Defaults to an empty string, which subscribes to all topics.
             serializer (MsgpackSerializer, optional): The serializer used to convert byte data back into objects. 
                                                       Defaults to `MsgpackSerializer`.
+            bind (bool, optional): If True, ROUTER will bind() to endpoint.
+                                   If False, it will connect() instead.
         """
         self.endpoint = endpoint  # Corrected typo from 'endpint' to 'endpoint'
         self.topic = topic
@@ -33,11 +39,16 @@ class ZMQSubscriber(StreamReader):
         # Use a shared ZMQ context if the endpoint is 'inproc', otherwise create a new context
         self.context = zmq.Context.instance() if endpoint.startswith('inproc:') else zmq.Context()
         self.socket = self.context.socket(zmq.SUB)
-        self.socket.connect(endpoint)
+        if bind:
+            self.socket.bind(endpoint)
+            action = "bound"
+        else:
+            self.socket.connect(endpoint)
+            action = "connected"                
         # Set the subscription topic; empty string subscribes to all topics
         self.socket.setsockopt(zmq.SUBSCRIBE, self.topic.encode('utf-8'))
         super().__init__(name='ZMQSubscriber', queue_size=queue_size)
-        Logger.debug(f"ZMQSubscriber is ready")
+        Logger.debug(f"ZMQSubscriber is ready ({action} at {self.endpoint})")
 
     def _transport_read_blocking(self) -> object:
         """
