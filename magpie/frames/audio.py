@@ -8,7 +8,7 @@ class AudioFrameRaw(Frame):
     channels: int = 1
     sample_rate: int = 16_000   
     bit_depth: int = 16
-    format: str = "wav"
+    format: str = "PCM"
 
     def __post_init__(self):
         super().__post_init__()
