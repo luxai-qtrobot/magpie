@@ -12,7 +12,11 @@ class ZMQPublisher(StreamWriter):
     pattern, where the publisher sends messages to all connected subscribers.
     """
 
-    def __init__(self, endpoint: str, serializer=MsgpackSerializer(), queue_size=1):
+    def __init__(self,
+                 endpoint: str,
+                 serializer=MsgpackSerializer(),
+                 queue_size=1,
+                 bind: bool = True):
         """
         Initializes the ZMQPublisher class.
 
@@ -31,9 +35,14 @@ class ZMQPublisher(StreamWriter):
         # Use a shared ZMQ context if the endpoint is 'inproc', otherwise create a new context
         self.context = zmq.Context.instance() if endpoint.startswith('inproc:') else zmq.Context()
         self.socket = self.context.socket(zmq.PUB)
-        self.socket.bind(endpoint)
+        if bind:
+            self.socket.bind(endpoint)
+            action = "bound"
+        else:
+            self.socket.connect(endpoint)
+            action = "connected"                
         super().__init__(name='ZMQPublisher', queue_size=queue_size)
-        Logger.debug(f"ZMQPublisher is ready")
+        Logger.debug(f"ZMQPublisher is ready ({action} at {self.endpoint})")
 
     def _transport_write(self, data: object, topic:str):
         """
