@@ -17,17 +17,17 @@ class MemmoryPushPull(StreamWriter, StreamReader):
         self.close_event = Event()
 
 
-    def _transport_write(self, data: object):
+    def _transport_write(self, data: object, topic:str):
         try:
             self.queue.put_nowait(data)
         except Exception as e:
             Logger.warning(f"{self.name} write failed with: {str(e)}")
             raise IOError
 
-    def _transport_read_blocking(self) -> object:
+    def _transport_read_blocking(self) -> (object, str):
         while not self.close_event.is_set():
             try:
-                return self.queue.get(timeout=2)
+                return self.queue.get(timeout=2), ""
             except Empty:
                 pass            
         time.sleep(0.5)  # this helps to avoid having infinit loop in calling thread when the MemmoryStreamer is closed.

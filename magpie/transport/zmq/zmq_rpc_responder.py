@@ -1,3 +1,4 @@
+import time
 from magpie.utils.logger import Logger
 from magpie.transport.rpc_responder import RpcResponder
 from magpie.serializer.msgpack_serializer import MsgpackSerializer
@@ -64,33 +65,40 @@ class ZMQRpcResponder(RpcResponder):
             TimeoutError: If no request is received within the timeout.
             Exception: For transport-level errors.
         """
-        try:
-            if timeout is None:
+        
+        poller = zmq.Poller()
+        poller.register(self.socket, zmq.POLLIN)
+        start_t = time.time()
+        while True:
+            # If socket/context already closed, just exit
+            if self.socket.closed or self.context.closed:
+                Logger.debug(f"{self.name}: socket/context closed, stop reading.")
+                return None, None
+
+            try:
+                poller_timeout = 1000 if not timeout else min(timeout*1000, 1000)
+                events = dict(poller.poll(poller_timeout))
+            except zmq.ZMQError as e:                
+                if self.socket.closed or self.context.closed:              
+                    return None, None
+                # Otherwise, let the caller deal with real ZMQ errors
+                Logger.warning(f"{self.name}: transport error during recv: {e}")
+                raise
+            
+            if self.socket in events and (events[self.socket] & zmq.POLLIN):
                 frames = self.socket.recv_multipart()
-            else:
-                poller = zmq.Poller()
-                poller.register(self.socket, zmq.POLLIN)
-                events = dict(poller.poll(int(timeout * 1000)))
+                if len(frames) < 2:
+                    raise RuntimeError(f"{self.name}: invalid message format, expected [identity, payload]")
 
-                if self.socket not in events or events[self.socket] != zmq.POLLIN:
-                    raise TimeoutError(f"{self.name}: no request received within {timeout} seconds")
+                client_identity = frames[0]
+                payload = frames[-1]
+                request_obj = self.serializer.deserialize(payload)
+                return request_obj, client_identity
 
-                frames = self.socket.recv_multipart()
+            # check if timeout occured 
+            if timeout and (time.time() - start_t) > timeout:
+                raise TimeoutError(f"{self.name}: no request received within {timeout} seconds")
 
-            if len(frames) < 2:
-                raise RuntimeError(f"{self.name}: invalid message format, expected [identity, payload]")
-
-            client_identity = frames[0]
-            payload = frames[-1]
-
-            request_obj = self.serializer.deserialize(payload)
-            return request_obj, client_identity
-
-        except TimeoutError:
-            raise
-        except Exception as e:
-            Logger.warning(f"{self.name}: transport error during recv: {e}")
-            raise
 
     def _transport_send(self, response_obj: object, client_ctx: object) -> None:
         """
@@ -113,7 +121,11 @@ class ZMQRpcResponder(RpcResponder):
         Closes the ZeroMQ socket and performs any necessary cleanup.
         """
         Logger.debug(f"{self.name} is closing ZMQ ROUTER socket.")
-        try:
-            self.socket.close()
-        except Exception as e:
-            Logger.warning(f"{self.name}: error while closing socket: {e}")
+        self.socket.close()        
+
+    def __del__(self):        
+        """
+        Destructor to ensure that the socket is closed and resources are cleaned up when the object is deleted.
+        """
+        self.socket.close()        
+        Logger.debug(f"{self.name} is terminated.")

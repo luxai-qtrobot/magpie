@@ -1,3 +1,4 @@
+import time
 from magpie.utils.logger import Logger
 from magpie.transport.rpc_requester import RpcRequester
 from magpie.serializer.msgpack_serializer import MsgpackSerializer
@@ -62,39 +63,53 @@ class ZMQRpcRequester(RpcRequester):
             TimeoutError: If no reply is received within the given timeout.
             Exception: For transport-level errors.
         """
-        try:
+        try: 
             # Serialize request
             payload = self.serializer.serialize(request_obj)
-
             # Send single-frame request
             self.socket.send(payload)
-
-            # Blocking receive if no timeout specified
-            if timeout is None:
-                reply_bytes = self.socket.recv()
-            else:
-                poller = zmq.Poller()
-                poller.register(self.socket, zmq.POLLIN)
-                events = dict(poller.poll(int(timeout * 1000)))
-
-                if self.socket not in events or events[self.socket] != zmq.POLLIN:
-                    raise TimeoutError(f"{self.name}: RPC call timed out after {timeout} seconds")
-
-                reply_bytes = self.socket.recv()
-
-            # Deserialize response
-            return self.serializer.deserialize(reply_bytes)
-
         except Exception as e:
             Logger.warning(f"{self.name}: transport error during RPC call: {e}")
             raise
+
+        poller = zmq.Poller()
+        poller.register(self.socket, zmq.POLLIN)
+        start_t = time.time()
+        while True:
+            # If socket/context already closed, just exit
+            if self.socket.closed or self.context.closed:
+                Logger.debug(f"{self.name}: socket/context closed, stop reading.")
+                return None
+
+            try:
+                poller_timeout = 1000 if not timeout else min(timeout*1000, 1000)
+                events = dict(poller.poll(poller_timeout))
+            except zmq.ZMQError as e:                
+                if self.socket.closed or self.context.closed:              
+                    return None
+                # Otherwise, let the caller deal with real ZMQ errors
+                Logger.warning(f"{self.name}: transport error during recv: {e}")
+                raise
+
+            if self.socket in events and (events[self.socket] & zmq.POLLIN):
+                reply_bytes = self.socket.recv()
+                return self.serializer.deserialize(reply_bytes)
+
+            # check if timeout occured 
+            if timeout and (time.time() - start_t) > timeout:
+                raise TimeoutError(f"{self.name}: no request received within {timeout} seconds")
+
 
     def _transport_close(self) -> None:
         """
         Closes the ZeroMQ socket and performs any necessary cleanup.
         """
         Logger.debug(f"{self.name} is closing ZMQ DEALER socket.")
-        try:
-            self.socket.close()
-        except Exception as e:
-            Logger.warning(f"{self.name}: error while closing socket: {e}")
+        self.socket.close()
+
+    def __del__(self):        
+        """
+        Destructor to ensure that the socket is closed and resources are cleaned up when the object is deleted.
+        """
+        self.socket.close()
+        Logger.debug(f"{self.name} is terminated.")

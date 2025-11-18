@@ -14,8 +14,8 @@ if __name__ == '__main__':
 
     while True: 
         try:
-            data = subscriber.read()            
-            Logger.info(f"received  {data}")
+            data, topic = subscriber.read()            
+            Logger.info(f"received topic {topic} : {data}")
             time.sleep(1)
         except KeyboardInterrupt:
             Logger.info('stopping...')   

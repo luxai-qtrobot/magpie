@@ -13,7 +13,7 @@ class ZMQSubscriber(StreamReader):
     """
 
     def __init__(self, endpoint: str, 
-                 topic='',
+                 topic: str = '',
                  serializer=MsgpackSerializer(),
                  queue_size=1,
                  bind: bool = False):
@@ -46,37 +46,49 @@ class ZMQSubscriber(StreamReader):
             self.socket.connect(endpoint)
             action = "connected"                
         # Set the subscription topic; empty string subscribes to all topics
-        self.socket.setsockopt(zmq.SUBSCRIBE, self.topic.encode('utf-8'))
+        self.socket.setsockopt(zmq.SUBSCRIBE, self.topic.encode())
         super().__init__(name='ZMQSubscriber', queue_size=queue_size)
         Logger.debug(f"ZMQSubscriber is ready ({action} at {self.endpoint})")
 
-    def _transport_read_blocking(self) -> object:
-        """
-        Reads a message from the ZeroMQ socket, deserializes it, and returns the corresponding object.
 
-        Returns:
-            object: The deserialized data object received from the publisher, or None if an error occurs.        
+    def _transport_read_blocking(self) -> (object, str):
         """
-        try:
-            # Receive a multipart message; expect topic and message parts
-            topic, msg = self.socket.recv_multipart()
-            # Logger.debug(f"{self.name} received {len(msg)} bytes from topic '{topic.decode('utf-8')}'.")
-            return self.serializer.deserialize(msg)
-        except Exception as e:
-            Logger.debug(f"{self.name} encountered an error: {str(e)}")
-        return None
+        Reads a message and topic  from the ZeroMQ socket using a poller with timeout.        
+        - If _transport_close() has been called (socket/context closed),
+          this returns None and stops blocking.
+        """
+        poller = zmq.Poller()
+        poller.register(self.socket, zmq.POLLIN)
+
+        while True:
+            # If socket/context already closed, just exit
+            if self.socket.closed or self.context.closed:
+                Logger.debug(f"{self.name}: socket/context closed, stop reading.")
+                return None
+
+            try:                
+                events = dict(poller.poll(1000))
+            except zmq.ZMQError as e:                
+                if self.socket.closed or self.context.closed:                    
+                    return None
+                # Otherwise, let the caller deal with real ZMQ errors
+                raise
+
+            if self.socket in events and (events[self.socket] & zmq.POLLIN):
+                # Socket is readable; recv and deserialize
+                topic, msg = self.socket.recv_multipart()
+                return self.serializer.deserialize(msg), topic.decode()
 
     def _transport_close(self): 
         """
         Closes the ZeroMQ socket and performs any necessary cleanup.
         """
         Logger.debug(f"{self.name} is closing.")
-        self.socket.close()
-        # Optional: self.context.term() to terminate the context if it's no longer needed
+        self.socket.close()        
 
     def __del__(self):        
         """
         Destructor to ensure that the socket is closed and resources are cleaned up when the object is deleted.
         """
-        # self._transport_close()
+        self.socket.close()        
         Logger.debug(f"{self.name} is terminated.")

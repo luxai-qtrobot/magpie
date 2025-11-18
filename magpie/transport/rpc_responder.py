@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from typing import Callable
-from threading import Event
 from magpie.utils.logger import Logger
 
 
@@ -21,8 +20,7 @@ class RpcResponder(ABC):
         Args:
             name (str, optional): The name for this responder. Defaults to class name.
         """
-        self.name = name if name is not None else self.__class__.__name__
-        self._closed = Event()
+        self.name = name if name is not None else self.__class__.__name__        
 
     @abstractmethod
     def _transport_recv(self, timeout: float = None) -> tuple:
@@ -86,9 +84,6 @@ class RpcResponder(ABC):
             TimeoutError: If no request arrives in time.
             Exception: For transport-level or handler errors.
         """
-        if self._closed.is_set():
-            raise RuntimeError(f"{self.name} is closed")
-
         try:
             request_obj, client_ctx = self._transport_recv(timeout=timeout)
         except TimeoutError:
@@ -106,28 +101,4 @@ class RpcResponder(ABC):
         """
         Closes the responder and its underlying transport.
         """
-        if not self._closed.is_set():
-            self._closed.set()
-            try:
-                self._transport_close()
-            except Exception as e:
-                Logger.warning(f"{self.name}: error during close: {e}")
-            Logger.debug(f"{self.name} closed.")
-
-    def closed(self) -> bool:
-        """
-        Indicates whether this responder has been closed.
-
-        Returns:
-            bool: True if closed, False otherwise.
-        """
-        return self._closed.is_set()
-
-    def __del__(self):
-        """
-        Ensures cleanup on deletion.
-        """
-        try:
-            self.close()
-        except Exception:
-            pass
+        self._transport_close()

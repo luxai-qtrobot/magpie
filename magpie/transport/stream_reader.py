@@ -29,7 +29,7 @@ class StreamReader(ABC):
             self.thread.start()
 
     @abstractmethod
-    def _transport_read_blocking(self) -> object:
+    def _transport_read_blocking(self) -> (object, str):
         """
         Abstract method to be implemented by subclasses to define how to read data from the underlying transport.
 
@@ -98,7 +98,7 @@ class StreamReader(ABC):
         """
         if self.queue_size > 0:
             self.reader_close_event.set()  # Signal the thread to stop            
-            self.thread.join()  # Wait for the reading thread to finish
             self._transport_close()  # Close the transport
+            self.thread.join()  # Wait for the reading thread to finish            
         else:
             self._transport_close()  # Close the transport
