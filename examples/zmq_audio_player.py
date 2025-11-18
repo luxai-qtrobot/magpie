@@ -28,7 +28,7 @@ class ZmqAudioPlayer(SinkNode):
         self.stream = None
         self.samplerate = None
         self.channels = None
-        self.dtype = None
+        self.dtype = 'int16'
 
         # For simple throughput statistics (chunks per second)
         self.prev_time = None
@@ -47,10 +47,10 @@ class ZmqAudioPlayer(SinkNode):
         # Fallback
         return 'int16'
 
-    def _init_stream_from_frame(self, frame: AudioFrameRaw):
-        self.samplerate = frame.sample_rate
-        self.channels = frame.channels
-        self.dtype = self._dtype_from_bitdepth(frame.bit_depth)
+
+    def _init_stream(self, samplerate: int, channels: int):
+        self.samplerate = samplerate
+        self.channels = channels
 
         self.stream = sd.OutputStream(
             samplerate=self.samplerate,
@@ -63,8 +63,9 @@ class ZmqAudioPlayer(SinkNode):
 
         Logger.info(
             f"{self.name} playing audio from {self.stream_reader.endpoint} "
-            f"({self.samplerate} Hz, {self.channels} ch, {self.dtype}, format={frame.format})"
+            f"({self.samplerate} Hz, {self.channels} ch, {self.dtype})"
         )
+
 
     def process(self):        
         result = self.stream_reader.read()
@@ -73,31 +74,45 @@ class ZmqAudioPlayer(SinkNode):
 
         msg, topic = result
         frame = AudioFrameRaw.from_dict(msg)
+
+        # --- Decode to a NumPy array of int16 samples ---
         if frame.format == 'FLAC':
-            # ensure we use the FLAC subclass API
-            frame_flac = AudioFrameFlac(**frame.__dict__)
-            byte_array = frame_flac.to_pcm()
+            # Decode FLAC → PCM using soundfile
+            import io
+            import soundfile as sf
+
+            buf = io.BytesIO(frame.data)
+            samples, sr = sf.read(buf, dtype='int16', always_2d=False)
+
+            # Ensure metadata consistent
+            frame.sample_rate = sr
+            if samples.ndim == 1:
+                frame.channels = 1
+            else:
+                frame.channels = samples.shape[1]
+
         else:
-            byte_array = frame.data
+            # Raw PCM path: frame.data is already int16 PCM bytes
+            samples = np.frombuffer(frame.data, dtype=np.int16)
 
-        byte_array = frame.data
-        if not byte_array:
-            return
-    
-        # Lazy-init stream when first frame arrives
+            # Reshape if multi-channel
+            if frame.channels > 1:
+                num_frames = samples.size // frame.channels
+                samples = samples[: num_frames * frame.channels]
+                samples = samples.reshape((num_frames, frame.channels))
+
+        # --- Lazy-init audio stream once we know samplerate/channels ---
         if self.stream is None:
-            self._init_stream_from_frame(frame)
+            # If FLAC, we already updated frame.sample_rate / frame.channels above
+            self._init_stream(samplerate=frame.sample_rate, channels=frame.channels)
 
-        # Interpret bytes as PCM according to bit depth
-        # Currently we only properly support PCM 16-bit
-        samples = np.frombuffer(byte_array, dtype=np.int16)
+            # For FLAC, if samples is 1D but channels > 1, reshape now
+        if frame.channels > 1 and samples.ndim == 1:
+            num_frames = samples.size // frame.channels
+            samples = samples[: num_frames * frame.channels]
+            samples = samples.reshape((num_frames, frame.channels))
 
-        channels = frame.channels
-        if channels > 1:
-            num_frames = samples.size // channels
-            samples = samples[: num_frames * channels]
-            samples = samples.reshape((num_frames, channels))
-
+        # --- Statistics (unchanged) ---
         if self.show_statistics:
             now = perf_counter()
             if self.prev_time is not None:
@@ -108,11 +123,13 @@ class ZmqAudioPlayer(SinkNode):
                     avg_cps = sum(self.chunk_rates) / len(self.chunk_rates)
                     Logger.info(
                         f"{self.name}: {samples.shape[0]} samples "
-                        f"({avg_cps:.1f} chunks/s, rate={frame.sample_rate})"
+                        f"({avg_cps:.1f} chunks/s, rate={frame.sample_rate}, format={frame.format})"
                     )
             self.prev_time = now
 
+        # --- Play audio ---
         self.stream.write(samples)
+        
 
     def terminate(self):
         # Clean up audio resources

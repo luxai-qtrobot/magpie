@@ -1,3 +1,4 @@
+import io
 from dataclasses import dataclass, field, fields
 from magpie.frames.frame import Frame
 
