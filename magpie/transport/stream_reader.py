@@ -60,9 +60,10 @@ class StreamReader(ABC):
         """
         while not self.reader_close_event.is_set():
             try:
-                data, topic = self._transport_read_blocking()
-                if not data:
+                raw_data = self._transport_read_blocking()
+                if raw_data is None:
                     continue
+                data, topic = raw_data
                 if self.reader_queue.full():
                     # Logger.debug(f"{self.name} queue is full. dropping old message.")
                     self.reader_queue.get_nowait()  # Remove the oldest item if the queue is full
