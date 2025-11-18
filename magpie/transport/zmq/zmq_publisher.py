@@ -64,12 +64,12 @@ class ZMQPublisher(StreamWriter):
         """
         Closes the ZeroMQ socket and performs any necessary cleanup.
         """
-        self.socket.close()
-        # Optional: self.context.term() to terminate the context if it's no longer needed
+        Logger.debug(f"{self.name} is closing.")
+        self.socket.close()        
 
     def __del__(self):
         """
         Destructor to ensure that the socket is closed and resources are cleaned up when the object is deleted.
         """
-        self._transport_close()
+        self.socket.close()        
         Logger.debug(f"{self.name} is terminated.")

@@ -26,7 +26,7 @@ if __name__ == '__main__':
     count = 1
     while True: 
         try:            
-            ret = client.call({'id': args.id, 'count': count}, timeout=3.0)
+            ret = client.call({'id': args.id, 'count': count}, timeout=None)
             Logger.info(f"client.call got response {ret}")
             count = count + 1
             time.sleep(1)
