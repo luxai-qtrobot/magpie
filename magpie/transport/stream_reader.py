@@ -60,17 +60,17 @@ class StreamReader(ABC):
         """
         while not self.reader_close_event.is_set():
             try:
-                data = self._transport_read_blocking()
+                data, topic = self._transport_read_blocking()
                 if not data:
                     continue
                 if self.reader_queue.full():
                     # Logger.debug(f"{self.name} queue is full. dropping old message.")
                     self.reader_queue.get_nowait()  # Remove the oldest item if the queue is full
-                self.reader_queue.put(data)
+                self.reader_queue.put((data, topic))
             except Exception as e:
                 Logger.warning(f"{self.name} _read_thread: {str(e)}")
 
-    def read(self) -> object:
+    def read(self) -> (object, str):
         """
         Reads data from the stream in a blocking manner.
 
