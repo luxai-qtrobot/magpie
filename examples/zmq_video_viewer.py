@@ -23,7 +23,7 @@ class ZmqVideoViewer(SinkNode):
         Logger.info(f"{self.name} showing video from {self.stream_reader.endpoint}")
 
     def process(self):        
-        data = self.stream_reader.read()
+        data, topic = self.stream_reader.read()
         if not data: return
         frame =  ImageFrameCV.from_dict(data)
         image = frame.to_cv_image()
