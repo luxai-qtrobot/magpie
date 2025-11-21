@@ -1,3 +1,4 @@
+from typing import Union, List
 from magpie.transport.stream_reader import StreamReader
 from magpie.utils.logger import Logger
 from magpie.serializer.msgpack_serializer import MsgpackSerializer
@@ -13,7 +14,7 @@ class ZMQSubscriber(StreamReader):
     """
 
     def __init__(self, endpoint: str, 
-                 topic: str = '',
+                 topic: Union[str, List[str]] = '',
                  serializer=MsgpackSerializer(),
                  queue_size=1,
                  bind: bool = False):
@@ -33,9 +34,15 @@ class ZMQSubscriber(StreamReader):
             bind (bool, optional): If True, ROUTER will bind() to endpoint.
                                    If False, it will connect() instead.
         """
-        self.endpoint = endpoint  # Corrected typo from 'endpint' to 'endpoint'
-        self.topic = topic
+        self.endpoint = endpoint  # Corrected typo from 'endpint' to 'endpoint'        
         self.serializer = serializer
+        # Set up the subscription topics
+        topic = '' if topic is None else topic
+        if isinstance(topic, (list, tuple)):
+            self.topics = list(topic)
+        else:
+            self.topics = [topic]
+
         # Use a shared ZMQ context if the endpoint is 'inproc', otherwise create a new context
         self.context = zmq.Context.instance() if endpoint.startswith('inproc:') else zmq.Context()
         self.socket = self.context.socket(zmq.SUB)
@@ -46,9 +53,13 @@ class ZMQSubscriber(StreamReader):
             self.socket.connect(endpoint)
             action = "connected"                
         # Set the subscription topic; empty string subscribes to all topics
-        self.socket.setsockopt(zmq.SUBSCRIBE, self.topic.encode())
+        if any(t == '' for t in self.topics):
+            self.socket.setsockopt(zmq.SUBSCRIBE, b'')
+        else:
+            for t in self.topics:
+                self.socket.setsockopt(zmq.SUBSCRIBE, t.encode())        
         super().__init__(name='ZMQSubscriber', queue_size=queue_size)
-        Logger.debug(f"ZMQSubscriber is ready ({action} at {self.endpoint})")
+        Logger.debug(f"ZMQSubscriber is ready ({action} at {self.endpoint} for topics: {self.topics})")
 
 
     def _transport_read_blocking(self) -> (object, str):
