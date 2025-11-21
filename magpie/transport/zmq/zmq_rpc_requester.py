@@ -112,4 +112,4 @@ class ZMQRpcRequester(RpcRequester):
         Destructor to ensure that the socket is closed and resources are cleaned up when the object is deleted.
         """
         self.socket.close()
-        Logger.debug(f"{self.name} is terminated.")
+        Logger.debug(f"ZMQRpcRequester is terminated.")

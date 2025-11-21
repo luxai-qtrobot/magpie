@@ -15,7 +15,7 @@ class ZMQPublisher(StreamWriter):
     def __init__(self,
                  endpoint: str,
                  serializer=MsgpackSerializer(),
-                 queue_size=1,
+                 queue_size=10,
                  bind: bool = True):
         """
         Initializes the ZMQPublisher class.
@@ -72,4 +72,4 @@ class ZMQPublisher(StreamWriter):
         Destructor to ensure that the socket is closed and resources are cleaned up when the object is deleted.
         """
         self.socket.close()        
-        Logger.debug(f"{self.name} is terminated.")
+        Logger.debug(f"ZMQPublisher is terminated.")

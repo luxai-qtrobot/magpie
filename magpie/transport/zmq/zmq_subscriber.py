@@ -16,7 +16,7 @@ class ZMQSubscriber(StreamReader):
     def __init__(self, endpoint: str, 
                  topic: Union[str, List[str]] = '',
                  serializer=MsgpackSerializer(),
-                 queue_size=1,
+                 queue_size=10,
                  bind: bool = False):
         """
         Initializes the ZMQSubscriber class.
@@ -102,4 +102,4 @@ class ZMQSubscriber(StreamReader):
         Destructor to ensure that the socket is closed and resources are cleaned up when the object is deleted.
         """
         self.socket.close()        
-        Logger.debug(f"{self.name} is terminated.")
+        Logger.debug(f"ZMQSubscriber is terminated.")
