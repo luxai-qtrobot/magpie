@@ -106,6 +106,7 @@ if __name__ == '__main__':
 ### Subscriber
 
 ```python
+import time
 from magpie.transport.zmq.zmq_subscriber import ZMQSubscriber
 from magpie.utils.logger import Logger
 
