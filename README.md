@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/magpie.png" alt="MAGPIE Logo" width="200"/>
+  <img src="src/magpie/assets/magpie.png" alt="MAGPIE Logo" width="200"/>
 </p>
 
 # MAGPIE – Message Abstraction & General-Purpose Integration Engine
