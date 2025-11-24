@@ -1,4 +1,4 @@
 include README.md
 include LICENSE
-recursive-include magpie *
-recursive-include examples *
+recursive-include examples *.py
+recursive-include src/magpie/assets *.png
