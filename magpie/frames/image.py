@@ -146,7 +146,7 @@ class ImageFrameJpeg(ImageFrameRaw):
             pixel_format=pixel_format.upper(),
         )
 
-    def to_np_image(self, pixel_format: str | None = None):
+    def to_np_image(self, pixel_format: str = None):
         """
         Decode JPEG bytes back into a NumPy array.
 
