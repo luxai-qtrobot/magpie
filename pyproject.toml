@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "luxai-magpie"
+description = "MAGPIE is a lightweight, modular messaging engine providing high-performance pub/sub and RPC over pluggable transports."
+readme = "README.md"
+requires-python = ">=3.7.3"
+license = { file = "LICENSE" }
+authors = [
+    { name = "LuxAI S.A." }
+]
+keywords = ["messaging", "rpc", "pubsub", "zeromq", "distributed-systems", "robotics", "middleware"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Operating System :: OS Independent",
+]
+# 👇 Important: version is dynamic
+dynamic = ["version"]
+
+dependencies = [
+    "typing_extensions",
+    "python-ulid",
+    "msgpack",
+    "pyzmq",
+]
+
+[project.optional-dependencies]
+image = [
+    "numpy",
+    "simplejpeg",
+    "opencv-python",
+]
+audio = [
+    "numpy",
+    "soundfile",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/luxai-qtrobot/magpie"
+"Source" = "https://github.com/luxai-qtrobot/magpie"
+"Bug Tracker" = "https://github.com/luxai-qtrobot/magpie/issues"
+
+# -----------------------------
+# setuptools configuration
+# -----------------------------
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["magpie*"]
+
+[tool.setuptools.package-data]
+"magpie" = ["assets/*.png"]
+
+# This tells setuptools how to read version dynamically
+[tool.setuptools.dynamic]
+version = {attr = "magpie.__version__"}

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/magpie.png" alt="MAGPIE Logo" width="200"/>
+</p>
+
 # MAGPIE – Message Abstraction & General-Purpose Integration Engine
 
 > **MAGPIE is a lightweight, modular messaging engine providing high-performance pub/sub and RPC over pluggable transports.**
