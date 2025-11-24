@@ -18,7 +18,7 @@ class PubNode(BaseNode):
 
     def process(self):
         Logger.info(f"{self.name} is publishing...")
-        self.publisher.write({'name': 'Bob', 'last': 'Marley'})
+        self.publisher.write({'name': 'Bob', 'last': 'Job'})
         time.sleep(1)
 
     def cleanup(self):

@@ -3,7 +3,6 @@ from dataclasses import dataclass, field, fields
 from ulid import ULID
 from magpie.utils.timestamp import get_utc_timestamp
 
-# TODO: check if having 'name' is useful
 # NOTE: in python < 3.10, dataclass does not support 'kw_only'
 #       therefore, all inherited class's attributes must have default value
 #       because the Frame class has fields with default value.   

@@ -48,10 +48,13 @@ class SubNode(SinkNode):
         self.delay = delay
 
     def process(self):        
-        data = self.stream_reader.read()
+        _data = self.stream_reader.read()
+        if _data is None:
+            return
+
+        data, topic = _data
         if data:
-            Logger.info(f"{self.name} received {data['count']}")
-        # time.sleep(self.delay)
+            Logger.info(f"{self.name} received {data['count']}")        
 
 
 if __name__ == '__main__':
@@ -65,13 +68,11 @@ if __name__ == '__main__':
     node3 = SubNode(name='node3', stream_reader=ZMQSubscriber("inproc://my_publisher", queue_size=10), setup_kwargs={'delay': 2})    
 
     try:
-        time.sleep(5)
-        node1.terminate()
         time.sleep(100)
     except KeyboardInterrupt:
         print("Keyboard interupt")
     finally:        
         node1.terminate()
         node2.terminate()
-        # node3.terminate()
+        node3.terminate()
         

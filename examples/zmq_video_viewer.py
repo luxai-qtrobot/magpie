@@ -22,25 +22,55 @@ class ZmqVideoViewer(SinkNode):
         self.fps_values = deque(maxlen=10)     
         Logger.info(f"{self.name} showing video from {self.stream_reader.endpoint}")
 
-    def process(self):        
-        data, topic = self.stream_reader.read()
-        if not data: return
-        frame =  ImageFrameCV.from_dict(data)
-        image = frame.to_cv_image()
+
+    def process(self):
+        _data = self.stream_reader.read()
+        if _data is None:
+            return
+
+        data, topic = _data
+        frame_type = data.get('name')        
+        if not frame_type or frame_type not in ['ImageFrameCV', 'ImageFrameJpeg']:
+            Logger.warning(f"{self.name} received unsupported frame type: {frame_type}")
+            return
+
+        if frame_type == 'ImageFrameCV':
+            frame = ImageFrameCV.from_dict(data)
+            image = frame.to_cv_image()
+        else:  # ImageFrameJpeg
+            from magpie.frames.image import ImageFrameJpeg
+            frame = ImageFrameJpeg.from_dict(data)
+            # Decode to BGR so OpenCV can display it directly
+            image = frame.to_np_image(pixel_format="BGR")
+
         # add info 
         if self.show_statistics and self.prev_time:
             fps = 1.0 / (perf_counter() - self.prev_time)
             self.fps_values.append(fps)
             avg_fps = int(sum(self.fps_values) / len(self.fps_values))
             height, width, _ = image.shape
-            position = position = (10, height - 10)
-            cv2.putText(image, f"[{frame.timestamp}] {width}x{height} {avg_fps}fps", position, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (112,82,204), 1, cv2.LINE_AA)
+            position = (10, height - 10)
+            cv2.putText(
+                image,
+                f"[{frame.timestamp}] {width}x{height} {avg_fps}fps",
+                position,
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (112, 82, 204),
+                1,
+                cv2.LINE_AA,
+            )
+
         self.prev_time = perf_counter()
+
         # Display the image
         cv2.imshow(self.name, image)
         cv2.waitKey(1)
 
+
 if __name__ == '__main__':
+    Logger.set_level('DEBUG')
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("endpoint", 
                         help="ZeroMQ subscribing socket endpoint (e.g. tcp://127.0.0.1:5555)",
@@ -51,7 +81,7 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     node = ZmqVideoViewer(name='VideoViewer', 
-                           stream_reader=ZMQSubscriber(args.endpoint, queue_size=0),
+                           stream_reader=ZMQSubscriber(args.endpoint, queue_size=1, delivery="latest"),
                            setup_kwargs={'show_statistics': args.verbose})
     
     while True:
