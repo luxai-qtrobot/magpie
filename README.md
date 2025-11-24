@@ -2,8 +2,8 @@
 
 > **MAGPIE is a lightweight, modular messaging engine providing high-performance pub/sub and RPC over pluggable transports.**
 
+
 **Status:** Beta  
-**License:** MIT  
 **PyPI package:** `luxai-magpie`  
 **Repository:** `magpie` (GitHub, under LuxAI)
 
@@ -38,7 +38,7 @@ Originally built for **QTrobot** at LuxAI, MAGPIE is generic enough to be used i
   - Generic `Frame` base class
   - Image frames: e.g. `ImageFrameJpeg`, `ImageFrameCV`
   - Audio frames: e.g. `AudioFrameRaw`, `AudioFrameFlac`
-- 🧩 **Optional heavy dependencies**
+- 🧩 **Optional dependencies**
   - Core remains light; image/audio extras are opt-in
 
 ---
@@ -53,8 +53,7 @@ pip install luxai-magpie
 
 ### Optional extras
 
-MAGPIE keeps heavy dependencies optional and uses **lazy imports** inside the library.  
-Install only what you need:
+MAGPIE keeps heavy dependencies optional and uses **lazy imports** inside the library. Install only what you need:
 
 ```bash
 # Image-related frames (e.g. ImageFrameJpeg, ImageFrameCV)
@@ -64,21 +63,6 @@ pip install "luxai-magpie[image]"
 pip install "luxai-magpie[audio]"
 ```
 
-Typical extras (to be declared in `pyproject.toml`):
-
-```toml
-[project.optional-dependencies]
-image = [
-    "numpy",
-    "simplejpeg",
-    "opencv-python",
-]
-
-audio = [
-    "numpy",
-    "soundfile",
-]
-```
 
 ---
 
@@ -88,8 +72,7 @@ audio = [
 - **OS / platforms (tested)**
   - Linux (x86_64, ARM)
   - Windows
-  - Raspberry Pi (ARMv7 / ARM64)
-  - NVIDIA Jetson (JetPack 5.x)
+  - Raspberry Pi/NVIDIA Jetson (ARMv7 / ARM64)
 
 ---
 
@@ -100,39 +83,49 @@ A minimal **pub/sub** example using the ZeroMQ transport.
 ### Publisher
 
 ```python
-from magpie.transport.zmq.zmq_publisher import ZmqPublisher
-from magpie.transport.zmq.zmq_utils import make_endpoint
+import time
+from magpie.transport.zmq.zmq_publisher import ZMQPublisher
+from magpie.utils.logger import Logger
 
-if __name__ == "__main__":
-    # Bind publisher to a TCP endpoint
-    endpoint = make_endpoint(host="0.0.0.0", port=5555)
-    pub = ZmqPublisher(endpoint)
+if __name__ == '__main__':    
+    publisher = ZMQPublisher("tcp://*:5555")
+    id = 1
+    while True: 
+        try:
+            publisher.write({'name': 'Bob', 'last': 'Job'}, topic='/mytopic')
+            Logger.info(f'publishing {id} ...')
+            id = id + 1
+            time.sleep(1)
+        except KeyboardInterrupt:
+            Logger.info('stopping...')
+            publisher.close()
+            break
 
-    topic = "demo"
-    message = {"msg": "hello from MAGPIE!"}
-
-    pub.publish(message, topic=topic)
-    print(f"Published on {endpoint} topic='{topic}': {message}")
 ```
 
 ### Subscriber
 
 ```python
-from magpie.transport.zmq.zmq_subscriber import ZmqSubscriber
-from magpie.transport.zmq.zmq_utils import make_endpoint
+from magpie.transport.zmq.zmq_subscriber import ZMQSubscriber
+from magpie.utils.logger import Logger
 
-if __name__ == "__main__":
-    # Connect to the same endpoint and subscribe to the topic
-    endpoint = make_endpoint(host="127.0.0.1", port=5555)
-    sub = ZmqSubscriber(endpoint, topics=["demo"])
+if __name__ == '__main__':
+    Logger.set_level("DEBUG")
+    subscriber = ZMQSubscriber("tcp://127.0.0.1:5555", topic=['/mytopic'], bind=False)
 
-    print("Waiting for message...")
-    data, topic = sub.read()
-    print(f"Received on topic='{topic}': {data}")
+    while True: 
+        try:
+            data, topic = subscriber.read()            
+            Logger.info(f"received {topic} : {data}")
+            time.sleep(1)
+        except KeyboardInterrupt:
+            Logger.info('stopping...')   
+            subscriber.close()
+            break    
 ```
 
-Run the subscriber first, then the publisher.  
-Under the hood, this uses MAGPIE’s transport abstraction and serializer (msgpack by default).
+
+Run the subscriber and publisher. Under the hood, this uses MAGPIE’s transport abstraction and serializer (msgpack by default).
 
 > **RPC usage** is similarly simple using `RpcRequester` and `RpcResponder` in `magpie.transport.zmq`.  
 > See the examples directory for a basic RPC echo server.
@@ -148,9 +141,6 @@ MAGPIE is organized into a few key modules:
 - **ZeroMQ-based** transport:
   - `zmq_publisher.py`, `zmq_subscriber.py`
   - `zmq_rpc_requester.py`, `zmq_rpc_responder.py`
-  - `zmq_utils.py`
-- **Local in-memory** transport:
-  - `transport.local.memory_pushpull` (useful for tests or single-process setups)
 
 The transport layer is **pluggable**: you can add new transports (e.g. WebRTC, MQTT) without changing user-facing code.
 
@@ -188,7 +178,7 @@ Heavy dependencies (e.g. NumPy, OpenCV, soundfile) are **only imported when need
 
 MAGPIE is used internally at **LuxAI** as part of the QTrobot ecosystem, for example:
 
-- Bridging transport layers (e.g. ZeroMQ ↔ ROS)
+- Bridging transport layers
 - Implementing distributed components and SDKs for QTrobot
 - Audio and video streaming between robot components
 
@@ -202,27 +192,22 @@ While MAGPIE is generic and not limited to robotics, its design is influenced by
   - Actively used in production-like systems
   - APIs are mostly stable, but minor changes are still possible
 
-Planned / potential enhancements:
-
-- Additional transports (e.g. MQTT, WebRTC)
-- More serializers
-- Higher-level pipelines for AI workloads
+-**Planned / potential enhancements:**
+  - Additional transports (e.g. MQTT, WebRTC)
+  - More serializers
+  - Higher-level pipelines for AI workloads
 
 ---
 
 ## Contributing
 
-Contributions are welcome, but the project is primarily developed as part of LuxAI’s QTrobot stack.
-
-If you’d like to contribute:
+Contributions are welcome! If you'd like to contribute:
 
 1. Open an issue to discuss your idea or bug.
 2. Keep changes focused and small where possible.
 3. Add tests or simple examples when introducing new features.
 
 ---
-
 ## License
 
-MAGPIE is released under the **MIT License**.  
-See `LICENSE` for details.
+This project is licensed under the MIT License. See the `LICENSE` file for details.
