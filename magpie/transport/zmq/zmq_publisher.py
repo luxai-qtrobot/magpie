@@ -12,51 +12,66 @@ class ZMQPublisher(StreamWriter):
     pattern, where the publisher sends messages to all connected subscribers.
     """
 
-    def __init__(self,
-                 endpoint: str,
-                 serializer=MsgpackSerializer(),
-                 queue_size=10,
-                 bind: bool = True):
+    def __init__(
+        self,
+        endpoint: str,
+        serializer=MsgpackSerializer(),
+        queue_size: int = 10,
+        bind: bool = True,
+        delivery: str = "reliable",     # "reliable" or "latest"
+    ):
         """
-        Initializes the ZMQPublisher class.
-
         Args:
-            endpoint (str): The ZeroMQ endpoint is a string consisting of a <transport>://<address>. 
-                            The transport specifies the underlying protocol to use such as 'tcp', 'ipc', or 'inproc'. 
-                            The address specifies the transport-specific address to bind to.
-                            - tcp example:     tcp://*:5555
-                            - inproc example:  inproc://my_publisher
-                            - ipc example:     ipc:///tmp/my_publisher
-            serializer (MsgpackSerializer, optional): The serializer used to convert data into byte format before sending. 
-                                                      Defaults to `MsgpackSerializer`.
+            endpoint (str): ZeroMQ endpoint (tcp://*, inproc://x, ipc://...).
+            serializer (MsgpackSerializer): Serializer for outgoing messages.
+            queue_size (int): Size of internal writer queue.
+            bind (bool): Whether to bind() or connect().
+            delivery (str): High-level delivery mode:
+                            - "reliable": default PUB behaviour
+                            - "latest": optimized for real-time streams
         """
-        self.endpoint = endpoint  # Corrected typo from 'endpint' to 'endpoint'
+        self.endpoint = endpoint
         self.serializer = serializer
-        # Use a shared ZMQ context if the endpoint is 'inproc', otherwise create a new context
+        self.delivery = delivery
+
+        # Use shared context for inproc, otherwise a new context
         self.context = zmq.Context.instance() if endpoint.startswith('inproc:') else zmq.Context()
         self.socket = self.context.socket(zmq.PUB)
+
+        # Apply delivery mode for publisher side
+        if self.delivery == "latest":
+            # Only sender side option needed for real-time semantics:
+            # Prevent large outbound queue buildup
+            self.socket.setsockopt(zmq.SNDHWM, 1)
+
+        # Bind or connect
         if bind:
             self.socket.bind(endpoint)
             action = "bound"
         else:
             self.socket.connect(endpoint)
-            action = "connected"                
-        super().__init__(name='ZMQPublisher', queue_size=queue_size)
-        Logger.debug(f"ZMQPublisher is ready ({action} at {self.endpoint})")
+            action = "connected"
 
-    def _transport_write(self, data: object, topic:str):
+        super().__init__(name='ZMQPublisher', queue_size=queue_size)
+        Logger.debug(
+            f"ZMQPublisher is ready ({action} at {self.endpoint}, delivery={self.delivery})"
+        )
+
+    def _transport_write(self, data: object, topic: str):
         """
         Publishes a message to the ZeroMQ socket with an optional topic.
 
         Args:
             data (object): The data object to be serialized and sent.
             topic (str, optional): The topic under which the data is published. Defaults to an empty string.
-        
         """
         try:
-            # Send the topic and serialized data as multipart
             topic = '' if not topic else topic
-            self.socket.send_multipart([topic.encode(), self.serializer.serialize(data)])
+            topic_bytes = topic.encode()
+            payload = self.serializer.serialize(data)  # must return a fresh bytes-like buffer
+
+            # Zero-copy send where possible
+            self.socket.send_multipart([topic_bytes, memoryview(payload)], copy=False)
         except Exception as e:
             Logger.warning(f"{self.name} write failed with: {str(e)}")
         

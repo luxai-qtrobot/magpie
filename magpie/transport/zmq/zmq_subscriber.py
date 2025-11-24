@@ -13,11 +13,16 @@ class ZMQSubscriber(StreamReader):
     which are then deserialized using the specified serializer.
     """
 
-    def __init__(self, endpoint: str, 
-                 topic: Union[str, List[str]] = '',
-                 serializer=MsgpackSerializer(),
-                 queue_size=10,
-                 bind: bool = False):
+
+    def __init__(
+        self,
+        endpoint: str,
+        topic: Union[str, List[str]] = '',
+        serializer=MsgpackSerializer(),
+        queue_size: int = 10,
+        bind: bool = False,
+        delivery: str = "reliable",   # "reliable" or "latest"
+    ):
         """
         Initializes the ZMQSubscriber class.
 
@@ -28,14 +33,18 @@ class ZMQSubscriber(StreamReader):
                             - tcp example:     tcp://*:5555
                             - inproc example:  inproc://my_publisher
                             - ipc example:     ipc:///tmp/my_publisher
-            topic (str, optional): The topic to subscribe to. Defaults to an empty string, which subscribes to all topics.
+            topic (str or list, optional): The topic(s) to subscribe to. Empty string subscribes to all topics.
             serializer (MsgpackSerializer, optional): The serializer used to convert byte data back into objects. 
-                                                      Defaults to `MsgpackSerializer`.
-            bind (bool, optional): If True, ROUTER will bind() to endpoint.
-                                   If False, it will connect() instead.
+            queue_size (int, optional): Max size of the internal StreamReader queue.
+            bind (bool, optional): If True, SUB socket will bind() to endpoint; otherwise it will connect().
+            delivery (str, optional): High-level delivery mode:
+                                      - "reliable": default ZeroMQ behaviour.
+                                      - "latest": tuned for real-time streams (e.g. video).
         """
-        self.endpoint = endpoint  # Corrected typo from 'endpint' to 'endpoint'        
+        self.endpoint = endpoint
         self.serializer = serializer
+        self.delivery = delivery
+
         # Set up the subscription topics
         topic = '' if topic is None else topic
         if isinstance(topic, (list, tuple)):
@@ -46,21 +55,32 @@ class ZMQSubscriber(StreamReader):
         # Use a shared ZMQ context if the endpoint is 'inproc', otherwise create a new context
         self.context = zmq.Context.instance() if endpoint.startswith('inproc:') else zmq.Context()
         self.socket = self.context.socket(zmq.SUB)
+
+        # Apply delivery mode defaults
+        if self.delivery == "latest":
+            # Optimised for "always latest" semantics (e.g. video frames)
+            self.socket.setsockopt(zmq.RCVHWM, 1)            
+
+        # Bind or connect
         if bind:
             self.socket.bind(endpoint)
             action = "bound"
         else:
             self.socket.connect(endpoint)
-            action = "connected"                
+            action = "connected"
+
         # Set the subscription topic; empty string subscribes to all topics
         if any(t == '' for t in self.topics):
             self.socket.setsockopt(zmq.SUBSCRIBE, b'')
         else:
             for t in self.topics:
-                self.socket.setsockopt(zmq.SUBSCRIBE, t.encode())        
-        super().__init__(name='ZMQSubscriber', queue_size=queue_size)
-        Logger.debug(f"ZMQSubscriber is ready ({action} at {self.endpoint} for topics: {self.topics})")
+                self.socket.setsockopt(zmq.SUBSCRIBE, t.encode())
 
+        super().__init__(name='ZMQSubscriber', queue_size=queue_size)
+        Logger.debug(
+            f"ZMQSubscriber is ready ({action} at {self.endpoint} "
+            f"for topics: {self.topics}, delivery={self.delivery}, queue_size={self.queue_size})"
+        )
 
     def _transport_read_blocking(self) -> (object, str):
         """

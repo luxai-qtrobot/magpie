@@ -2,5 +2,6 @@ typing_extensions
 python-ulid
 msgpack
 pyzmq
-# numpy  # for imagetransport
-# opencv-python # for opencv capture/transport
+# numpy          # for imagetransport
+# opencv-python  # for opencv capture/transport
+# simplejpeg     # for jpeg image frame
