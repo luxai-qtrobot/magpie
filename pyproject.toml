@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-image = [
+video = [
     "numpy",
     "simplejpeg",
     "opencv-python",
@@ -40,10 +40,42 @@ audio = [
     "soundfile",
 ]
 
+dev = [
+    "numpy",
+    "opencv-python",
+    "simplejpeg",
+    "soundfile",
+    "pytest",
+    "coverage"
+]
+
+full = [
+    "numpy",
+    "opencv-python",
+    "simplejpeg",
+    "soundfile",
+]
+
+cli = [
+    "sounddevice",
+    "numpy",
+    "opencv-python",
+    "simplejpeg",
+    "soundfile",
+]
+
+
 [project.urls]
 "Homepage" = "https://github.com/luxai-qtrobot/magpie"
 "Source" = "https://github.com/luxai-qtrobot/magpie"
 "Bug Tracker" = "https://github.com/luxai-qtrobot/magpie/issues"
+
+
+[project.scripts]
+magpie-audio-player = "magpie.tools.zmq_audio_player:main"
+magpie-video-viewer = "magpie.tools.zmq_video_viewer:main"
+magpie-video-capture = "magpie.tools.zmq_video_capture:main"
+
 
 # -----------------------------
 # setuptools configuration

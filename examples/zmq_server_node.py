@@ -3,7 +3,7 @@ import time
 import argparse
 
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+
 
 from magpie.nodes.server_node import ServerNode
 from magpie.transport.zmq.zmq_rpc_responder import ZMQRpcResponder

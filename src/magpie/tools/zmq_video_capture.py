@@ -4,7 +4,7 @@ import os, sys
 import time
 import cv2
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+
 
 from magpie.utils.logger import Logger
 from magpie.nodes.source_node import SourceNode
@@ -14,10 +14,11 @@ from magpie.frames.image import ImageFrameCV, ImageFrameJpeg
 
 class ZmqVideoCapture(SourceNode):
 
-    def setup(self, camera=0, frame_rate=30, size=(640, 480), encoder='jpeg'):
+    def setup(self, camera=0, frame_rate=30, size=(640, 480), encoder='jpeg', topic="/camera"):
         # Initialize camera capture        
         self.encoder = encoder
         self.cap = cv2.VideoCapture(camera)
+        self.topic = topic
                 
         if frame_rate > 0:
             self.cap.set(cv2.CAP_PROP_FPS, frame_rate)        
@@ -39,18 +40,22 @@ class ZmqVideoCapture(SourceNode):
         else:  # turbojpeg
             frame = ImageFrameJpeg.from_np_image(image, quality=80, pixel_format="BGR")
 
-        self.stream_writer.write(frame.to_dict())
+        self.stream_writer.write(frame.to_dict(), topic=self.topic)
                 
 
 
-if __name__ == '__main__':
-    Logger.set_level('DEBUG')
+def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-a", "--address", 
-                        help="ZeroMQ publishing socket endpoint (e.g. tcp://*:5555)",
-                        default="tcp://*:5555",                        
+    parser.add_argument("endpoint", 
+                        help="ZeroMQ subscribing socket endpoint (e.g. tcp://127.0.0.1:5555)",
                         type=str)
+    parser.add_argument(
+        "topic",
+        help="ZeroMQ publishing topic on endpoint (e.g. /mytopic)",
+        type=str,
+    )
+
     parser.add_argument("-c", "--camera", 
                         help="opencv capturing camera id (e.g. 0)",
                         default=0,       
@@ -74,13 +79,18 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    node = ZmqVideoCapture(name='VideoCapture',
-                            stream_writer=ZMQPublisher(args.address, queue_size=0, delivery="latest"),
+    node = ZmqVideoCapture(name='MagpieVideoCapture',
+                            stream_writer=ZMQPublisher(
+                                endpoint=args.endpoint,                                 
+                                bind=True,
+                                queue_size=0,                                 
+                                delivery="latest"),
                             setup_kwargs={
                                 'camera': args.camera,
                                 'size':  tuple(args.size),
                                 'frame_rate': args.framerate,
-                                'encoder': args.encoder,})
+                                'encoder': args.encoder,
+                                'topic': args.topic})
     while True:
         try:
             time.sleep(10)
@@ -90,3 +100,5 @@ if __name__ == '__main__':
     node.terminate()
 
 
+if __name__ == "__main__":
+    main()  

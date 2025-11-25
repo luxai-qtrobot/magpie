@@ -123,6 +123,8 @@ class ImageFrameJpeg(ImageFrameRaw):
             height, width = image.shape
             channels = 1
             pixel_format = "GRAY"
+            # simplejpeg requires 3D shape (H, W, 1)
+            image = image.reshape(height, width, 1)
         elif image.ndim == 3:
             height, width, channels = image.shape
             if channels not in (3, 4):

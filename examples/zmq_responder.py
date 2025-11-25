@@ -2,7 +2,7 @@ import os, sys
 import time
 
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+
 
 from magpie.transport.zmq.zmq_rpc_responder import ZMQRpcResponder
 from magpie.utils.logger import Logger
