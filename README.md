@@ -6,11 +6,6 @@
 
 > **MAGPIE is a lightweight, modular messaging engine providing high-performance pub/sub and RPC over pluggable transports.**
 
-
-**Status:** Beta  
-**PyPI package:** `luxai-magpie`  
-**Repository:** `magpie` (GitHub, under LuxAI)
-
 ![Test Status](https://github.com/luxai-qtrobot/magpie/actions/workflows/python-tests.yml/badge.svg)
 
 
@@ -284,10 +279,11 @@ While MAGPIE is generic and not limited to robotics, its design is influenced by
   - Actively used in production-like systems
   - APIs are mostly stable, but minor changes are still possible
 
--**Planned / potential enhancements:**
+- **Planned / potential enhancements:**
   - Additional transports (e.g. MQTT, WebRTC)
   - More serializers
   - Higher-level pipelines for AI workloads
+  - Multi trasnport support
 
 ---
 
