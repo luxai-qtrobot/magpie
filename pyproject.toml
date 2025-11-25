@@ -7,7 +7,7 @@ name = "luxai-magpie"
 description = "MAGPIE is a lightweight, modular messaging engine providing high-performance pub/sub and RPC over pluggable transports."
 readme = "README.md"
 requires-python = ">=3.7.3"
-license = "MIT"
+license = { file = "LICENSE" }
 authors = [
     { name = "LuxAI S.A." }
 ]
