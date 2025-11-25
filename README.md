@@ -10,7 +10,9 @@
 **Status:** Beta  
 **PyPI package:** `luxai-magpie`  
 **Repository:** `magpie` (GitHub, under LuxAI)
+
 ![Test Status](https://github.com/luxai-qtrobot/magpie/actions/workflows/python-tests.yml/badge.svg)
+
 
 MAGPIE is a small but powerful building block for distributed Python systems.  
 It gives you a clean abstraction over:
