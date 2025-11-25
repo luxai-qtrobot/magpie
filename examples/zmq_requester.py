@@ -2,12 +2,8 @@ import os, sys
 import time
 import argparse
 
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-
 from magpie.transport.zmq.zmq_rpc_requester import ZMQRpcRequester
 from magpie.utils.logger import Logger
-
 
 
 if __name__ == '__main__':
@@ -26,7 +22,7 @@ if __name__ == '__main__':
     count = 1
     while True: 
         try:            
-            ret = client.call({'id': args.id, 'count': count}, timeout=None)
+            ret = client.call({'id': args.id, 'count': count}, timeout=0.5)
             Logger.info(f"client.call got response {ret}")
             count = count + 1
             time.sleep(1)

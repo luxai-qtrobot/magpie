@@ -6,7 +6,7 @@ import numpy as np
 from time import perf_counter
 from collections import deque
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+
 
 from magpie.utils.logger import Logger
 from magpie.nodes.sink_node import SinkNode
@@ -68,21 +68,30 @@ class ZmqVideoViewer(SinkNode):
         cv2.waitKey(1)
 
 
-if __name__ == '__main__':
-    Logger.set_level('DEBUG')
+def main():
     
     parser = argparse.ArgumentParser()
     parser.add_argument("endpoint", 
                         help="ZeroMQ subscribing socket endpoint (e.g. tcp://127.0.0.1:5555)",
                         type=str)
+    parser.add_argument(
+        "topic",
+        help="ZeroMQ subscribing topic on endpoint (e.g. /mytopic)",
+        type=str,
+    )
     parser.add_argument("-v", "--verbose", 
                         help="show verbose information on video viewer",
                         action="store_true")
     
     args = parser.parse_args()
-    node = ZmqVideoViewer(name='VideoViewer', 
-                           stream_reader=ZMQSubscriber(args.endpoint, queue_size=1, delivery="latest"),
-                           setup_kwargs={'show_statistics': args.verbose})
+    node = ZmqVideoViewer(name='MagpieVideoViewer', 
+                          stream_reader=ZMQSubscriber(
+                          endpoint=args.endpoint,
+                          topic=args.topic,
+                          bind=False,
+                          queue_size=1,                           
+                          delivery="latest"),
+                          setup_kwargs={'show_statistics': args.verbose})
     
     while True:
         try:
@@ -91,3 +100,7 @@ if __name__ == '__main__':
             break
     Logger.info("Closing...")
     node.terminate()        
+
+
+if __name__ == "__main__":
+    main()  

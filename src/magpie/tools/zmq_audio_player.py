@@ -5,9 +5,12 @@ from time import perf_counter
 from collections import deque
 
 import numpy as np
-import sounddevice as sd
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+try:
+    import sounddevice as sd
+except ImportError as e:
+    Logger.error(f"Could not import sounddevice. Please install it using 'pip install sounddevice'.")
+    sys.exit()
 
 from magpie.utils.logger import Logger
 from magpie.nodes.sink_node import SinkNode
@@ -128,7 +131,10 @@ class ZmqAudioPlayer(SinkNode):
             self.prev_time = now
 
         # --- Play audio ---
-        self.stream.write(samples)
+        try:
+            self.stream.write(samples)
+        except Exception as e:
+            Logger.debug(f"{self.name} error while writing to audio stream: {e}")
         
 
     def terminate(self):
@@ -146,7 +152,7 @@ class ZmqAudioPlayer(SinkNode):
             pass
 
 
-if __name__ == '__main__':
+def main():    
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "endpoint",
@@ -173,10 +179,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     node = ZmqAudioPlayer(
-        name='ZmqAudioPlayer',
+        name='MagpieAudioPlayer',
         stream_reader=ZMQSubscriber(endpoint=args.endpoint,
                                     topic=args.topic,
-                                    queue_size=0),
+                                    bind=False,
+                                    queue_size=1,                                    
+                                    delivery="latest"),
                                     setup_kwargs={
                                         'latency': args.latency,
                                         'show_statistics': args.verbose,
@@ -190,3 +198,8 @@ if __name__ == '__main__':
 
     Logger.info("Closing...")
     node.terminate()
+
+
+# Optional, purely for manual `python -m` usage:
+if __name__ == "__main__":
+    main()

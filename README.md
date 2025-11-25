@@ -10,6 +10,7 @@
 **Status:** Beta  
 **PyPI package:** `luxai-magpie`  
 **Repository:** `magpie` (GitHub, under LuxAI)
+![Test Status](https://github.com/luxai-qtrobot/magpie/actions/workflows/python-tests.yml/badge.svg)
 
 MAGPIE is a small but powerful building block for distributed Python systems.  
 It gives you a clean abstraction over:
@@ -60,13 +61,16 @@ pip install luxai-magpie
 MAGPIE keeps heavy dependencies optional and uses **lazy imports** inside the library. Install only what you need:
 
 ```bash
-# Image-related frames (e.g. ImageFrameJpeg, ImageFrameCV)
-pip install "luxai-magpie[image]"
-
 # Audio-related frames (e.g. AudioFrameFlac)
 pip install "luxai-magpie[audio]"
-```
 
+# Image-related frames (e.g. ImageFrameJpeg, ImageFrameCV)
+pip install "luxai-magpie[video]"
+
+# All media features
+pip install "luxai-magpie[full]"
+
+```
 
 ---
 
@@ -129,13 +133,94 @@ if __name__ == '__main__':
             break    
 ```
 
+Her is a minimal **req/resp** example using the ZeroMQ transport.
 
-Run the subscriber and publisher. Under the hood, this uses MAGPIE’s transport abstraction and serializer (msgpack by default).
+### Requester
 
-> **RPC usage** is similarly simple using `RpcRequester` and `RpcResponder` in `magpie.transport.zmq`.  
-> See the examples directory for a basic RPC echo server.
+```python
+from magpie.transport.zmq.zmq_rpc_requester import ZMQRpcRequester
+from magpie.utils.logger import Logger
+
+if __name__ == '__main__':
+    Logger.set_level("DEBUG")
+    client = ZMQRpcRequester("tcp://127.0.0.1:5556")
+    try:            
+        ret = client.call({'payload': 'hello'}, timeout=3.0)
+        Logger.info(f"Got response {ret}")
+    except TimeoutError:
+        Logger.info('timeout')   
+    
+    client.close()
+```
+
+### Responder
+
+```python
+from magpie.transport.zmq.zmq_rpc_responder import ZMQRpcResponder
+from magpie.utils.logger import Logger
+
+def on_request(req : object):
+    Logger.info(f"on_request: {req}")
+    return req
+
+if __name__ == '__main__':
+    server = ZMQRpcResponder("tcp://*:5556")
+
+    while True: 
+        try:
+            status = server.handle_once(handler=on_request, timeout=1.0)
+        except TimeoutError:
+            pass
+        except KeyboardInterrupt:
+            Logger.info('stopping...')
+            server.close()
+            break      
+```
 
 ---
+
+## Command-Line Tools (Optional)
+
+MAGPIE provides lightweight CLI tools for streaming **video** and **audio** over ZeroMQ.
+
+## Installation
+
+```bash
+pip install "luxai-magpie[cli]"
+```
+
+This installs the required optional dependencies and enables these CLI commands:
+
+- `magpie-video-capture`
+- `magpie-video-viewer`
+- `magpie-audio-player`
+
+
+## Video Streamer
+
+Capture frames from an OpenCV camera and publish them over ZeroMQ.
+
+```bash
+magpie-video-capture tcp://*:5555 /camera --camera 0 --encoder jpeg
+```
+
+## Video Stream Viewer
+
+Subscribe to a MAGPIE video stream and display it.
+
+```bash
+magpie-video-viewer tcp://127.0.0.1:5555 /camera
+```
+
+## Audio Stream Player
+
+Receive and play audio frames in real time.
+
+```bash
+magpie-audio-player tcp://127.0.0.1:5555 /audio
+```
+
+--- 
 
 ## Architecture Overview
 
