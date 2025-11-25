@@ -1,13 +1,8 @@
 import os, sys
 import time
 
-
-
-
-from magpie.transport.zmq.zmq_subscriber import ZMQSubscriber
-from magpie.utils.logger import Logger
-
-
+from luxai.magpie.transport import ZMQSubscriber
+from luxai.magpie.utils import Logger
 
 if __name__ == '__main__':
     Logger.set_level("DEBUG")

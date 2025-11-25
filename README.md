@@ -94,8 +94,8 @@ A minimal **pub/sub** example using the ZeroMQ transport.
 
 ```python
 import time
-from magpie.transport.zmq.zmq_publisher import ZMQPublisher
-from magpie.utils.logger import Logger
+from luxai.magpie.transport import ZMQPublisher
+from luxai.magpie.utils import Logger
 
 if __name__ == '__main__':    
     publisher = ZMQPublisher("tcp://*:5555")
@@ -117,8 +117,8 @@ if __name__ == '__main__':
 
 ```python
 import time
-from magpie.transport.zmq.zmq_subscriber import ZMQSubscriber
-from magpie.utils.logger import Logger
+from luxai.magpie.transport import ZMQSubscriber
+from luxai.magpie.utils import Logger
 
 if __name__ == '__main__':
     Logger.set_level("DEBUG")
@@ -140,8 +140,8 @@ Her is a minimal **req/resp** example using the ZeroMQ transport.
 ### Requester
 
 ```python
-from magpie.transport.zmq.zmq_rpc_requester import ZMQRpcRequester
-from magpie.utils.logger import Logger
+from luxai.magpie.transport import ZMQRpcRequester
+from luxai.magpie.utils import Logger
 
 if __name__ == '__main__':
     Logger.set_level("DEBUG")
@@ -158,8 +158,8 @@ if __name__ == '__main__':
 ### Responder
 
 ```python
-from magpie.transport.zmq.zmq_rpc_responder import ZMQRpcResponder
-from magpie.utils.logger import Logger
+from luxai.magpie.transport import ZMQRpcResponder
+from luxai.magpie.utils import Logger
 
 def on_request(req : object):
     Logger.info(f"on_request: {req}")

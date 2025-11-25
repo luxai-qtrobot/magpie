@@ -3,11 +3,9 @@ import time
 import argparse
 
 
-
-
-from magpie.nodes.server_node import ServerNode
-from magpie.transport.zmq.zmq_rpc_responder import ZMQRpcResponder
-from magpie.utils.logger import Logger
+from luxai.magpie.nodes import ServerNode
+from luxai.magpie.transport import ZMQRpcResponder
+from luxai.magpie.utils import Logger
 
 
 

@@ -2,8 +2,8 @@ import os, sys
 import time
 import argparse
 
-from magpie.transport.zmq.zmq_rpc_requester import ZMQRpcRequester
-from magpie.utils.logger import Logger
+from luxai.magpie.transport import ZMQRpcRequester
+from luxai.magpie.utils import Logger
 
 
 if __name__ == '__main__':

@@ -1,7 +1,7 @@
 import unittest
 import time
 
-from magpie.nodes.process_node import ProcessNode
+from luxai.magpie.nodes import ProcessNode
 from tests.fake_stream_transports import FakeStreamReader, FakeStreamWriter, FakeSharedBuffer
 
 

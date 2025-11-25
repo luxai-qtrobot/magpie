@@ -1,12 +1,8 @@
 import os, sys
 import time
 
-
-
-
-from magpie.transport.zmq.zmq_publisher import ZMQPublisher
-from magpie.utils.logger import Logger
-
+from luxai.magpie.transport import ZMQPublisher
+from luxai.magpie.utils import Logger
 
 
 if __name__ == '__main__':

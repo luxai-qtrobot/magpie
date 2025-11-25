@@ -1,7 +1,7 @@
 import time
 import unittest
 
-from magpie.nodes.server_node import ServerNode
+from luxai.magpie.nodes import ServerNode
 from tests.fake_rpc_transports import FakeRpcResponder
 
 

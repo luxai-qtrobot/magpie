@@ -3,8 +3,8 @@
 import unittest
 import time
 import socket
-from magpie.transport.zmq.zmq_publisher import ZMQPublisher
-from magpie.transport.zmq.zmq_subscriber import ZMQSubscriber
+from luxai.magpie.transport import ZMQPublisher
+from luxai.magpie.transport import ZMQSubscriber
 
 
 def _free_tcp_port():

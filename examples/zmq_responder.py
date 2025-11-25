@@ -2,10 +2,8 @@ import os, sys
 import time
 
 
-
-
-from magpie.transport.zmq.zmq_rpc_responder import ZMQRpcResponder
-from magpie.utils.logger import Logger
+from luxai.magpie.transport.zmq import ZMQRpcResponder
+from luxai.magpie.utils import Logger
 
 
 def on_request(req:object):

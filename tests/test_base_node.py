@@ -1,6 +1,6 @@
 import unittest
 import time
-from magpie.nodes.base_node import BaseNode
+from luxai.magpie.nodes import BaseNode
 
 
 class TestNode(BaseNode):
