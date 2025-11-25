@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="src/luxai/magpie/assets/magpie.png" alt="MAGPIE Logo" width="200"/>
+  <img src="https://github.com/luxai-qtrobot/magpie/raw/main/src/luxai/magpie/assets/magpie.png" alt="MAGPIE Logo" width="200"/>
 </p>
 
 # MAGPIE – Message Abstraction & General-Purpose Integration Engine
