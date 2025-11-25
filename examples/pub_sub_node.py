@@ -1,14 +1,10 @@
 import os, sys
 import time
 
-
-
-
-
-from magpie.utils.logger import Logger
-from magpie.nodes.base_node import BaseNode
-from magpie.transport.zmq.zmq_publisher import ZMQPublisher
-from magpie.transport.zmq.zmq_subscriber import ZMQSubscriber
+from luxai.magpie.utils import Logger
+from luxai.magpie.nodes import BaseNode
+from luxai.magpie.transport import ZMQPublisher
+from luxai.magpie.transport import ZMQSubscriber
 
 
 class PubNode(BaseNode):

@@ -1,5 +1,5 @@
-from magpie.transport.rpc_requester import RpcRequester
-from magpie.transport.rpc_responder import RpcResponder
+from luxai.magpie.transport import RpcRequester
+from luxai.magpie.transport import RpcResponder
 
 class FakeRpcRequester(RpcRequester):
     """

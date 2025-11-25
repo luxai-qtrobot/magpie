@@ -1,6 +1,6 @@
 import unittest
 import time
-from magpie.frames.frame import Frame
+from luxai.magpie.frames import Frame
 
 
 class TestFrame(unittest.TestCase):

@@ -1,8 +1,8 @@
 # tests/fake_stream.py
 
 from queue import Queue, Empty
-from magpie.transport.stream_reader import StreamReader
-from magpie.transport.stream_writer import StreamWriter
+from luxai.magpie.transport import StreamReader
+from luxai.magpie.transport import StreamWriter
 
 
 class FakeSharedBuffer:

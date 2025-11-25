@@ -1,8 +1,8 @@
 import unittest
 import time
 
-from magpie.nodes.sink_node import SinkNode
-from magpie.nodes.source_node import SourceNode
+from luxai.magpie.nodes import SinkNode
+from luxai.magpie.nodes import SourceNode
 from tests.fake_stream_transports import FakeSharedBuffer, FakeStreamReader, FakeStreamWriter
 
 

@@ -3,8 +3,8 @@ import time
 import socket
 import threading
 
-from magpie.transport.zmq.zmq_rpc_requester import ZMQRpcRequester
-from magpie.transport.zmq.zmq_rpc_responder import ZMQRpcResponder
+from luxai.magpie.transport import ZMQRpcRequester
+from luxai.magpie.transport import ZMQRpcResponder
 
 
 def _free_tcp_port():

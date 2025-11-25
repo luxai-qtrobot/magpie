@@ -1,8 +1,8 @@
 import os, sys
 import time
 
-from magpie.nodes.base_node import BaseNode
-from magpie.utils.logger import Logger
+from luxai.magpie.nodes import BaseNode
+from luxai.magpie.utils import Logger
 
 
 class MyNode(BaseNode):

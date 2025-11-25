@@ -2,7 +2,7 @@ import unittest
 import io
 import struct
 
-from magpie.frames.audio import AudioFrameRaw, AudioFrameFlac
+from luxai.magpie.frames import AudioFrameRaw, AudioFrameFlac
 
 
 class TestAudioFrameRaw(unittest.TestCase):

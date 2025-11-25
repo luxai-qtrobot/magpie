@@ -1,6 +1,6 @@
 import unittest
 import sys
-from magpie.frames.image import (
+from luxai.magpie.frames import (
     ImageFrameRaw,
     ImageFrameCV,
     ImageFrameJpeg,
