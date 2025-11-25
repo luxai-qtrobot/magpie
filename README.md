@@ -287,15 +287,15 @@ While MAGPIE is generic and not limited to robotics, its design is influenced by
 
 ---
 
-## Contributing
+<!-- ## Contributing
 
 Contributions are welcome! If you'd like to contribute:
 
 1. Open an issue to discuss your idea or bug.
 2. Keep changes focused and small where possible.
-3. Add tests or simple examples when introducing new features.
+3. Add tests or simple examples when introducing new features. -->
 
 ---
 ## License
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+This project is licensed under the *GNU General Public License v3 (GPLv3)* Licens. See the `LICENSE` file for details.

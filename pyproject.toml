@@ -13,7 +13,8 @@ authors = [
 ]
 keywords = ["messaging", "rpc", "pubsub", "zeromq", "distributed-systems", "robotics", "middleware"]
 classifiers = [
-    "Development Status :: 4 - Beta",    
+    "Development Status :: 4 - Beta", 
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",   
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.7",
     "Operating System :: OS Independent",
