@@ -85,7 +85,7 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["luxai*"]
+include = ["luxai.magpie*"]
 
 [tool.setuptools.package-data]
 "luxai.magpie" = ["assets/*.png"]
