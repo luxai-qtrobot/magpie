@@ -1,6 +1,13 @@
 from abc import ABC, abstractmethod
 from luxai.magpie.utils.logger import Logger
 
+# lets define two subclass of TimeoutError: AckTimeoutError and ReplyTimeoutError
+class AckTimeoutError(TimeoutError):
+    pass
+
+class ReplyTimeoutError(TimeoutError):
+    pass
+
 
 class RpcRequester(ABC):
     """
@@ -64,7 +71,8 @@ class RpcRequester(ABC):
 
         Raises:
             RuntimeError: If the requester is already closed.
-            TimeoutError: If no reply arrives in time.
+            ReplyTimeoutError: If no reply arrives in time.
+            AckTimeoutError: If no acknowledgment for receipt arrives in time.
             Exception: For transport-level errors.
         """
         try:

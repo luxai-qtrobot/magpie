@@ -1,7 +1,8 @@
 import time
 from luxai.magpie.utils.logger import Logger
-from luxai.magpie.transport.rpc_requester import RpcRequester
+from luxai.magpie.transport.rpc_requester import RpcRequester, AckTimeoutError, ReplyTimeoutError
 from luxai.magpie.serializer.msgpack_serializer import MsgpackSerializer
+from luxai.magpie.utils.common import get_uinque_id
 from .zmq_utils import zmq
 
 
@@ -18,7 +19,8 @@ class ZMQRpcRequester(RpcRequester):
                  endpoint: str,
                  serializer: MsgpackSerializer = MsgpackSerializer(),
                  name: str = None,
-                 identity: bytes = None):
+                 identity: bytes = None,
+                 ack_timeout: float = 2.0):
         """
         Initializes the ZMQRpcRequester.
 
@@ -35,6 +37,7 @@ class ZMQRpcRequester(RpcRequester):
         """
         self.endpoint = endpoint
         self.serializer = serializer
+        self.ack_timeout = ack_timeout
 
         # Use shared context for inproc, otherwise create a new one
         self.context = zmq.Context.instance() if endpoint.startswith("inproc:") else zmq.Context()
@@ -64,14 +67,47 @@ class ZMQRpcRequester(RpcRequester):
             Exception: For transport-level errors.
         """
         try: 
-            # Serialize request
-            payload = self.serializer.serialize(request_obj)
+            req = {
+                "rid": get_uinque_id(),
+                "payload": request_obj
+            }
+            
+            # Serialize request            
+            payload = self.serializer.serialize(req)
             # Send single-frame request
             self.socket.send(payload)
         except Exception as e:
             Logger.warning(f"{self.name}: transport error during RPC call: {e}")
             raise
+        
+        # wait fo ack: {"rid": req["rid"], "ack": true} for min(timeout, self.ack_timeout)
+        try:
+            ack_timeout = min(timeout, self.ack_timeout) if timeout else self.ack_timeout
+            ack = self._socket_receive(timeout=ack_timeout)
+        except TimeoutError:            
+            raise AckTimeoutError(f"{self.name}: no ack received within {ack_timeout} seconds")
+        except Exception as e:
+            Logger.warning(f"{self.name}: transport error during ack receive: {e}")
+            raise
 
+        if ack is None or ack.get("rid") != req["rid"] or not ack.get("ack", False):
+            raise RuntimeError(f"{self.name}: invalid ack received: {ack}")
+        
+        # wait for reply : {"rid": req["rid"], "payload": ...}
+        try:
+            reply = self._socket_receive(timeout=timeout)
+        except TimeoutError:
+            raise ReplyTimeoutError(f"{self.name}: no reply received within {timeout} seconds")
+        except Exception as e:
+            Logger.warning(f"{self.name}: transport error during reply receive: {e}")
+            raise
+    
+        if reply is None or reply.get("rid") != req["rid"] or "payload" not in reply:
+            raise RuntimeError(f"{self.name}: invalid reply received: {reply}")
+        return reply.get("payload")
+        
+
+    def _socket_receive(self, timeout: float = None) -> object:
         poller = zmq.Poller()
         poller.register(self.socket, zmq.POLLIN)
         start_t = time.time()
@@ -97,7 +133,7 @@ class ZMQRpcRequester(RpcRequester):
 
             # check if timeout occured 
             if timeout and (time.time() - start_t) > timeout:
-                raise TimeoutError(f"{self.name}: no request received within {timeout} seconds")
+                raise TimeoutError(f"{self.name}: no response received within {timeout} seconds")
 
 
     def _transport_close(self) -> None:
