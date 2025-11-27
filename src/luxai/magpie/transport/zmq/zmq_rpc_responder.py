@@ -65,7 +65,33 @@ class ZMQRpcResponder(RpcResponder):
             TimeoutError: If no request is received within the timeout.
             Exception: For transport-level errors.
         """
-        
+        # wait for request with timeout
+        request_obj, client_identity = self._socket_receive(timeout=timeout)
+        # check request validity. it should be like this:  {"rid": req["rid"], "payload": ...} 
+        if request_obj is None or "rid" not in request_obj or "payload" not in request_obj:
+            raise RuntimeError(f"{self.name}: invalid request format: {request_obj}")
+                
+        # we will put the rid and client identity in the client_ctx so that we can use it later in _transport_send
+        client_ctx = {
+            "identity": client_identity,
+            "rid": request_obj["rid"]
+        }        
+
+        # send ack back to client: {"rid": request_obj["rid"], "ack": true}
+        # we can not use _transport_send here because we need to send different format
+        # our ack format is: {"rid": request_obj["rid"], "ack": true} 
+        # lets use raw socket send try/except to catch any transport errors 
+        try:
+            ack_payload = self.serializer.serialize({"rid": request_obj["rid"], "ack": True})
+            self.socket.send_multipart([client_identity, ack_payload])
+        except zmq.ZMQError as e:
+            Logger.warning(f"{self.name}: transport error during ack send: {e}")
+            raise
+
+        return request_obj["payload"], client_ctx
+
+
+    def _socket_receive(self, timeout: float = None) -> object:
         poller = zmq.Poller()
         poller.register(self.socket, zmq.POLLIN)
         start_t = time.time()
@@ -92,12 +118,12 @@ class ZMQRpcResponder(RpcResponder):
 
                 client_identity = frames[0]
                 payload = frames[-1]
-                request_obj = self.serializer.deserialize(payload)
+                request_obj = self.serializer.deserialize(payload)                
                 return request_obj, client_identity
 
             # check if timeout occured 
             if timeout and (time.time() - start_t) > timeout:
-                raise TimeoutError(f"{self.name}: no request received within {timeout} seconds")
+                raise TimeoutError(f"{self.name}: no request received within {timeout} seconds")        
 
 
     def _transport_send(self, response_obj: object, client_ctx: object) -> None:
@@ -109,9 +135,11 @@ class ZMQRpcResponder(RpcResponder):
             client_ctx (object): The client identity (bytes) from _transport_recv().
         """
         try:
+            # we need to make correct response format: {"rid": client_ctx["rid"], "payload": response_obj}
+            response_obj = {"rid": client_ctx["rid"], "payload": response_obj}
             payload = self.serializer.serialize(response_obj)
             # ROUTER requires identity frame first
-            self.socket.send_multipart([client_ctx, payload])
+            self.socket.send_multipart([client_ctx["identity"], payload])
         except Exception as e:
             Logger.warning(f"{self.name}: transport error during send: {e}")
             raise

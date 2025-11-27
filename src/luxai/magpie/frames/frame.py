@@ -1,7 +1,6 @@
 
 from dataclasses import dataclass, field, fields
-from ulid import ULID
-from luxai.magpie.utils.timestamp import get_utc_timestamp
+from luxai.magpie.utils.common import get_utc_timestamp, get_uinque_id
 
 # NOTE: in python < 3.10, dataclass does not support 'kw_only'
 #       therefore, all inherited class's attributes must have default value
@@ -14,7 +13,7 @@ class Frame:
     timestamp: str = field(init=False)
 
     def __post_init__(self):  
-        self.gid = self.gid if self.gid else str(ULID())  # TODO: check if it's better to use ULID().bytes. 
+        self.gid = self.gid if self.gid else get_uinque_id()
         self.id = self.id if self.id else 0
         self.name = self.__class__.__name__
         self.timestamp = get_utc_timestamp()

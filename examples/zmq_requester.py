@@ -7,6 +7,7 @@ from luxai.magpie.utils import Logger
 
 
 if __name__ == '__main__':
+    Logger.set_level("DEBUG")
     parser = argparse.ArgumentParser()
     parser.add_argument("endpoint", 
                         help="socket endpoint (e.g. tcp://127.0.0.1:5555)",
@@ -22,10 +23,12 @@ if __name__ == '__main__':
     count = 1
     while True: 
         try:            
-            ret = client.call({'id': args.id, 'count': count}, timeout=0.5)
+            ret = client.call({'id': args.id, 'count': count}, timeout=None)
             Logger.info(f"client.call got response {ret}")
             count = count + 1
             time.sleep(1)
+        except TimeoutError:
+            Logger.warning(f"zmq_requester example timout on call...")
         except KeyboardInterrupt:
             Logger.info('stopping...')   
             client.close()
