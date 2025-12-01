@@ -4,15 +4,15 @@ import socket
 import threading
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
-import socket
 
 from luxai.magpie.utils import Logger
+
 
 @dataclass
 class NodeInfo:
     """Simple container for discovered node data."""
     node_id: str
-    ip: str
+    ips: list[str]      # all IPv4s from ServiceInfo
     port: int
     payload: Dict[str, Any]
 
@@ -24,7 +24,7 @@ class ZconfDiscovery:
     Key ideas:
         - Each node (e.g. robot, service) advertises itself as a Zeroconf service.
         - Other processes maintain an in-memory map of known nodes.
-        - You can resolve a node_id to a ZMQ endpoint like "tcp://<ip>:<port>".
+        - You can resolve a node_id to its current NodeInfo.
 
     Service model:
         - service_type: DNS-SD service type, e.g. "_magpie-zmq._tcp.local."
@@ -50,9 +50,11 @@ class ZconfDiscovery:
 
         disc = ZconfDiscovery()
 
-        endpoint = disc.resolve_node("QTRD000320", timeout=5.0)
-        if endpoint is None:
+        info = disc.resolve_node("QTRD000320", timeout=5.0)
+        if info is None:
             raise RuntimeError("Node not found")
+        ip = disc.pick_best_ip(info)
+        endpoint = f"tcp://{ip}:{info.port}"
         robot = Robot.connect_zmq(endpoint=endpoint)
 
     The discovery is event-based (via ServiceBrowser). resolve_node() simply looks
@@ -63,7 +65,7 @@ class ZconfDiscovery:
     def __init__(
         self,
         *,
-        service_type: str = "_magpie-zmq._tcp.local."        
+        service_type: str = "_magpie-zmq._tcp.local."
     ) -> None:
         """
         Args:
@@ -73,7 +75,7 @@ class ZconfDiscovery:
                 will see each other.
                 Example: "_magpie-zmq._tcp.local."
         """
-    
+
         try:
             from zeroconf import IPVersion, ServiceBrowser, ServiceInfo, Zeroconf
         except ImportError:
@@ -81,7 +83,7 @@ class ZconfDiscovery:
                 "Zeroconf discovery requires the optional dependency 'zeroconf'. "
                 "Install it via: pip install luxai-magpie[discovery]"
             )
-        
+
         # Normalize service_type: must end with a dot, e.g. "_magpie-zmq._tcp.local."
         if not service_type.endswith("."):
             service_type += "."
@@ -164,14 +166,19 @@ class ZconfDiscovery:
 
         # Service instance name: "<node_id>.<service_type>"
         service_name = f"{node_id}.{self._service_type}"
-        ip = self._get_default_ipv4()
+
+        # Advertise all usable IPv4 addresses for this host.
+        ips = self._get_all_ipv4()
+        if not ips:
+            # Absolute fallback; in practice we should always find at least one non-loopback IP
+            ips = ["127.0.0.1"]
+
         info = ServiceInfo(
             type_=self._service_type,
             name=service_name,
-             addresses=[socket.inet_aton(ip)],   # **explicit IPv4**
+            addresses=[socket.inet_aton(ip) for ip in ips],
             port=port,
             properties=properties,
-            # addresses=None -> Zeroconf will use this host's IPs
         )
 
         self._zc.register_service(info)
@@ -190,9 +197,9 @@ class ZconfDiscovery:
     # ------------------------------------------------------------------
     # Discovery / resolving
     # ------------------------------------------------------------------
-    def resolve_node(self, node_id: str, timeout: float = 5.0) -> Optional[str]:
+    def resolve_node(self, node_id: str, timeout: float = 5.0) -> Optional[NodeInfo]:
         """
-        Resolve a node_id to a ZMQ endpoint like "tcp://<ip>:<port>".
+        Resolve a node_id to its current NodeInfo.
 
         This method:
             - returns immediately if the node is already known, or
@@ -205,24 +212,62 @@ class ZconfDiscovery:
                 Maximum time (in seconds) to wait for the node to show up.
 
         Returns:
-            A ZMQ endpoint string "tcp://<ip>:<port>", or None if not found
-            within the timeout.
+            A NodeInfo instance, or None if not found within the timeout.
         """
         deadline = threading.current_thread()  # dummy to avoid linter warning; real code below
         deadline = None  # type: ignore[assignment]
         # Using time inside the lock to avoid subtle races
-        import time
-        deadline = time.time() + timeout
+        import time as _time
+        deadline = _time.time() + timeout
 
         with self._cond:
             while node_id not in self._nodes:
-                remaining = deadline - time.time()
+                remaining = deadline - _time.time()
                 if remaining <= 0:
                     return None
                 self._cond.wait(remaining)
 
             info = self._nodes[node_id]
-            return f"tcp://{info.ip}:{info.port}"
+            return info
+
+    def pick_best_ip(self, node: NodeInfo) -> Optional[str]:
+        """
+        Pick the most suitable IP address from a NodeInfo.
+
+        Heuristic:
+            - Prefer non-loopback, non-link-local addresses.
+            - If possible, prefer an address that shares a prefix with one
+              of our own IPv4 addresses (same subnet heuristic).
+            - Fallback to the first address if nothing better is found.
+        """
+        if not node.ips:
+            return None
+
+        # Get our own local IPv4 addresses for a simple "same subnet" heuristic.
+        local_ips = self._get_all_ipv4()
+        local_prefixes = {ip.rsplit(".", 1)[0] for ip in local_ips}
+
+        def is_usable(ip: str) -> bool:
+            return not (
+                ip.startswith("127.") or
+                ip.startswith("169.254.")
+            )
+
+        # 1) Prefer IPs on the same /24 as one of our local addresses.
+        for ip in node.ips:
+            if not is_usable(ip):
+                continue
+            prefix = ip.rsplit(".", 1)[0]
+            if prefix in local_prefixes:
+                return ip
+
+        # 2) Then any usable IP.
+        for ip in node.ips:
+            if is_usable(ip):
+                return ip
+
+        # 3) Fallback: first IP, even if it's not ideal.
+        return node.ips[0]
 
     def list_nodes(self) -> Dict[str, NodeInfo]:
         """
@@ -264,15 +309,14 @@ class ZconfDiscovery:
                 # tiny sleep to let responses arrive
                 time.sleep(0.2)
 
-
         if info is None:
             Logger.warning("[ZconfDiscovery] get_service_info returned None")
             return
 
         # Logger.debug(f"[ZconfDiscovery] Resolved service: port={info.port}, addresses={getattr(info, 'addresses', [])}")
-        # Extract an IPv4 address if available
-        ip = self._extract_ipv4(info)
-        if not ip:
+        # Extract all IPv4 addresses if available
+        ips = self._extract_ipv4(info)
+        if not ips:
             return
 
         # Parse TXT properties (bytes -> str)
@@ -303,7 +347,7 @@ class ZconfDiscovery:
 
         node_info = NodeInfo(
             node_id=node_id,
-            ip=ip,
+            ips=ips,
             port=info.port,
             payload=payload,
         )
@@ -329,31 +373,51 @@ class ZconfDiscovery:
                 self._cond.notify_all()
 
     @staticmethod
-    def _extract_ipv4(info) -> Optional[str]:
+    def _extract_ipv4(info) -> list[str]:
         """
-        Pick the first IPv4 address from a ServiceInfo (if any).
+        Extract all IPv4 addresses from a ServiceInfo (if any).
         Zeroconf stores addresses as raw bytes (4 for IPv4, 16 for IPv6).
         """
         # Logger.debug(f"[ZconfDiscovery] _extract_ipv4: raw addresses={getattr(info, 'addresses', [])}")
+        ips: list[str] = []
         for addr in getattr(info, "addresses", []):
             # IPv4 addresses are 4 bytes long
             if len(addr) == 4:
                 try:
-                    return socket.inet_ntoa(addr)
+                    ip = socket.inet_ntoa(addr)
+                    ips.append(ip)
                 except OSError:
                     continue
-        return None
+        return ips
 
     @staticmethod
-    def _get_default_ipv4() -> str:
-        """Best-effort: primary IPv4 used for outbound connections."""
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    def _get_all_ipv4() -> list[str]:
+        """
+        Best-effort: return all non-loopback IPv4 addresses for this host.
+
+        This avoids relying on internet connectivity and lets us advertise
+        all usable addresses (e.g. Wi-Fi + internal LAN) at once.
+        """
+        ips: set[str] = set()
+
+        # Try resolving the hostname to IPv4 addresses.
         try:
-            # Doesn't need to be reachable; just triggers route selection
-            s.connect(("8.8.8.8", 80))
-            return s.getsockname()[0]
-        finally:
-            s.close()
+            hostname = socket.gethostname()
+            for family, _, _, _, sockaddr in socket.getaddrinfo(hostname, None):
+                if family == socket.AF_INET:
+                    ip = sockaddr[0]
+                    ips.add(ip)
+        except OSError:
+            pass
+
+        # Filter out obvious non-useful addresses (loopback, link-local).
+        def _is_usable(ip: str) -> bool:
+            return not (
+                ip.startswith("127.") or      # loopback
+                ip.startswith("169.254.")     # link-local
+            )
+
+        return [ip for ip in ips if _is_usable(ip)]
 
     # ------------------------------------------------------------------
     # Cleanup / context manager
