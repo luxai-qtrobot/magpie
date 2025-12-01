@@ -188,8 +188,13 @@ class McastDiscovery:
 
             # Join the multicast group
             group_bin = socket.inet_aton(self._group)
-            ifaddr = socket.inet_aton(self._interface)
-            mreq = struct.pack("4s4s", group_bin, ifaddr)
+            if self._interface in ("", "0.0.0.0"):
+                # Join on all interfaces (kernel decides which ones)
+                mreq = struct.pack("4sl", group_bin, socket.INADDR_ANY)
+            else:
+                ifaddr = socket.inet_aton(self._interface)
+                mreq = struct.pack("4s4s", group_bin, ifaddr)
+
             sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
             sock.settimeout(0.5)  # short per-recv timeout

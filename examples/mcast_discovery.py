@@ -7,9 +7,9 @@ from luxai.magpie.utils.common import get_uinque_id
 from luxai.magpie.discovery import McastDiscovery
 
 
-def advertise_node(): 
-    Logger.info("Advertising beacon...")
-    with McastDiscovery() as d:
+def advertise_node(interface = "0.0.0.0"): 
+    Logger.info(f"Advertising beacon on {interface}...")
+    with McastDiscovery(interface=interface) as d:
         d.advertise({
             "node_id": get_uinque_id(),
             "endpoint": "tcp://*:5555",
@@ -22,9 +22,9 @@ def advertise_node():
             pass
 
 
-def scan_node():
-    Logger.info("Scanning for beacons...")
-    d = McastDiscovery()
+def scan_node(interface = "0.0.0.0"):
+    Logger.info(f"Scanning for beacons on {interface}...")
+    d = McastDiscovery(interface=interface)
     try:
         while True:
             Logger.debug("scanning...")
@@ -49,9 +49,15 @@ if __name__ == '__main__':
         choices=["scan", "advertise"],
     )
 
+    parser.add_argument(
+        "--interface",
+        default="0.0.0.0",
+        help="Network interface to bind to (default: 0.0.0.0)"
+    )
+
     args = parser.parse_args()
 
     if args.role == "advertise":
-        advertise_node()
+        advertise_node(args.interface)
     else:
-        scan_node()
+        scan_node(args.interface)
