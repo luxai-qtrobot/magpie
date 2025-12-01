@@ -51,8 +51,9 @@ def scan_nodes():
 
             Logger.info("Discovered nodes:")
             for node_id, info in nodes.items():
+                best_ip = disc.pick_best_ip(info)
                 Logger.info(
-                    f"  node_id={node_id}  ip={info.ip}  port={info.port}  payload={info.payload}"
+                    f"  node_id={node_id}  ips={info.ips}  port={info.port}  payload={info.payload} (best: {best_ip})"
                 )
 
     except KeyboardInterrupt:
