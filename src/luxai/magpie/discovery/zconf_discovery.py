@@ -3,7 +3,7 @@ import json
 import socket
 import threading
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from luxai.magpie.utils import Logger
 
@@ -12,7 +12,7 @@ from luxai.magpie.utils import Logger
 class NodeInfo:
     """Simple container for discovered node data."""
     node_id: str
-    ips: list[str]      # all IPv4s from ServiceInfo
+    ips: List[str]      # all IPv4s from ServiceInfo
     port: int
     payload: Dict[str, Any]
 
