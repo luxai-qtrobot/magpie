@@ -400,7 +400,7 @@ class ZconfDiscovery:
         """
         ips: set[str] = set()
 
-        # Try resolving the hostname to IPv4 addresses.
+        # 1) Try resolving the hostname to IPv4 addresses.
         try:
             hostname = socket.gethostname()
             for family, _, _, _, sockaddr in socket.getaddrinfo(hostname, None):
@@ -408,6 +408,37 @@ class ZconfDiscovery:
                     ip = sockaddr[0]
                     ips.add(ip)
         except OSError:
+            pass
+
+        # 2) On platforms that support it (e.g. Linux), walk all interfaces
+        #    and query their IPv4 addresses directly.
+        try:
+            # socket.if_nameindex is available on modern Python.
+            if hasattr(socket, "if_nameindex"):
+                import fcntl
+                import struct
+
+                for _, ifname in socket.if_nameindex():
+                    name = str(ifname)
+                    # Skip obvious virtual / unwanted interfaces.
+                    if name.startswith(("lo", "docker", "br-", "veth", "virbr")):
+                        continue
+
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    try:
+                        # SIOCGIFADDR = 0x8915
+                        req = struct.pack("256s", name[:15].encode("utf-8"))
+                        res = fcntl.ioctl(s.fileno(), 0x8915, req)
+                        ip = socket.inet_ntoa(res[20:24])
+                        ips.add(ip)
+                    except OSError:
+                        # Interface might not have an IPv4 address, ignore.
+                        pass
+                    finally:
+                        s.close()
+        except Exception:
+            # Any failure here should not be fatal; we just fall back
+            # to whatever we got from getaddrinfo().
             pass
 
         # Filter out obvious non-useful addresses (loopback, link-local).
