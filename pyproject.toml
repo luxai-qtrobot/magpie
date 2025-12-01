@@ -40,6 +40,10 @@ audio = [
     "soundfile",
 ]
 
+discovery = [
+    "zeroconf"
+]
+
 dev = [
     "numpy",
     "opencv-python",
@@ -54,6 +58,7 @@ full = [
     "opencv-python",
     "simplejpeg",
     "soundfile",
+    "zeroconf"
 ]
 
 cli = [
