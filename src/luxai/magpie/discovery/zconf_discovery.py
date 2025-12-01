@@ -373,13 +373,13 @@ class ZconfDiscovery:
                 self._cond.notify_all()
 
     @staticmethod
-    def _extract_ipv4(info) -> list[str]:
+    def _extract_ipv4(info) -> List[str]:
         """
         Extract all IPv4 addresses from a ServiceInfo (if any).
         Zeroconf stores addresses as raw bytes (4 for IPv4, 16 for IPv6).
         """
         # Logger.debug(f"[ZconfDiscovery] _extract_ipv4: raw addresses={getattr(info, 'addresses', [])}")
-        ips: list[str] = []
+        ips: List[str] = []
         for addr in getattr(info, "addresses", []):
             # IPv4 addresses are 4 bytes long
             if len(addr) == 4:
@@ -391,7 +391,7 @@ class ZconfDiscovery:
         return ips
 
     @staticmethod
-    def _get_all_ipv4() -> list[str]:
+    def _get_all_ipv4() -> List[str]:
         """
         Best-effort: return all non-loopback IPv4 addresses for this host.
 
