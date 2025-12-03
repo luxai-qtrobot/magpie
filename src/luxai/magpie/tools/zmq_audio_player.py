@@ -12,10 +12,10 @@ except ImportError as e:
     Logger.error(f"Could not import sounddevice. Please install it using 'pip install sounddevice'.")
     sys.exit()
 
-from luxai.magpie.utils.logger import Logger
-from luxai.magpie.nodes.sink_node import SinkNode
-from luxai.magpie.transport.zmq.zmq_subscriber import ZMQSubscriber
-from luxai.magpie.frames.audio import AudioFrameRaw, AudioFrameFlac
+from luxai.magpie.utils import Logger
+from luxai.magpie.nodes import SinkNode
+from luxai.magpie.transport import ZMQSubscriber
+from luxai.magpie.frames import Frame, AudioFrameRaw, AudioFrameFlac
 
 
 class ZmqAudioPlayer(SinkNode):
@@ -76,33 +76,45 @@ class ZmqAudioPlayer(SinkNode):
             return
 
         msg, topic = result
-        frame = AudioFrameRaw.from_dict(msg)
 
-        # --- Decode to a NumPy array of int16 samples ---
-        if frame.format == 'FLAC':
-            # Decode FLAC → PCM using soundfile
-            import io
-            import soundfile as sf
+        # pick AudioFrameRaw or AudioFrameFlac automatically
+        try:
+            frame = Frame.from_dict(msg)
+        except Exception as e:
+            Logger.warning(f"{self.name} failed to deserialize frame: {e}")
+            return
 
+        # --- Ensure it's an audio frame ---
+        if not isinstance(frame, (AudioFrameRaw, AudioFrameFlac)):
+            Logger.warning(f"{self.name} received unsupported frame type: {frame.name}")
+            return
+
+        # ============================================================
+        #  FLAC PATH : Decode compressed FLAC to PCM (np.int16)
+        # ============================================================
+        if isinstance(frame, AudioFrameFlac):
             buf = io.BytesIO(frame.data)
             samples, sr = sf.read(buf, dtype='int16', always_2d=False)
-
-            # Ensure metadata consistent
+            # Update metadata to reflect decoded audio
             frame.sample_rate = sr
+            frame.bit_depth = 16
             if samples.ndim == 1:
                 frame.channels = 1
             else:
                 frame.channels = samples.shape[1]
 
-        else:
-            # Raw PCM path: frame.data is already int16 PCM bytes
+        # ============================================================
+        #  RAW PCM PATH : Convert bytes directly to int16 NumPy array
+        # ============================================================
+        else:   # AudioFrameRaw
             samples = np.frombuffer(frame.data, dtype=np.int16)
 
-            # Reshape if multi-channel
+            # reshaping if multi-channel PCM
             if frame.channels > 1:
                 num_frames = samples.size // frame.channels
                 samples = samples[: num_frames * frame.channels]
                 samples = samples.reshape((num_frames, frame.channels))
+                
 
         # --- Lazy-init audio stream once we know samplerate/channels ---
         if self.stream is None:

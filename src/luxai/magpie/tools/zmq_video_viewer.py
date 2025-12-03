@@ -8,10 +8,10 @@ from collections import deque
 
 
 
-from luxai.magpie.utils.logger import Logger
-from luxai.magpie.nodes.sink_node import SinkNode
-from luxai.magpie.transport.zmq.zmq_subscriber import ZMQSubscriber
-from luxai.magpie.frames.image import ImageFrameCV
+from luxai.magpie.utils import Logger
+from luxai.magpie.nodes import SinkNode
+from luxai.magpie.transport import ZMQSubscriber
+from luxai.magpie.frames import Frame, ImageFrameCV, ImageFrameJpeg
 
 
 class ZmqVideoViewer(SinkNode):
@@ -29,19 +29,23 @@ class ZmqVideoViewer(SinkNode):
             return
 
         data, topic = _data
-        frame_type = data.get('name')        
-        if not frame_type or frame_type not in ['ImageFrameCV', 'ImageFrameJpeg']:
-            Logger.warning(f"{self.name} received unsupported frame type: {frame_type}")
+
+        # Let the Frame factory pick the right subclass
+        try:
+            frame = Frame.from_dict(data)
+        except Exception as e:
+            Logger.warning(f"{self.name} failed to deserialize frame: {e}")
             return
 
-        if frame_type == 'ImageFrameCV':
-            frame = ImageFrameCV.from_dict(data)
+        # Accept only the image frame types we know how to render
+        if isinstance(frame, ImageFrameCV):
             image = frame.to_cv_image()
-        else:  # ImageFrameJpeg
-            from luxai.magpie.frames.image import ImageFrameJpeg
-            frame = ImageFrameJpeg.from_dict(data)
+        elif isinstance(frame, ImageFrameJpeg):
             # Decode to BGR so OpenCV can display it directly
             image = frame.to_np_image(pixel_format="BGR")
+        else:
+            Logger.warning(f"{self.name} received unsupported frame type: {getattr(frame, 'name', type(frame).__name__)}")
+            return
 
         # add info 
         if self.show_statistics and self.prev_time:
