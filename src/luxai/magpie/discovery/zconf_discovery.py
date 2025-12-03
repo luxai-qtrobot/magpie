@@ -122,6 +122,14 @@ class ZconfDiscovery:
 
         self._listener = _Listener(self)
         self._browser = ServiceBrowser(self._zc, self._service_type, self._listener)
+        # wake up multicast on some platform        
+        try:
+            # bogus instance name just to force a query / network activity
+            dummy_name = f"warmup.{self._service_type}"
+            self._zc.get_service_info(self._service_type, dummy_name, timeout=500)
+        except Exception:
+            pass
+
 
     # ------------------------------------------------------------------
     # Advertising
@@ -391,38 +399,89 @@ class ZconfDiscovery:
         return ips
 
     @staticmethod
-    def _get_all_ipv4() -> List[str]:
+    def _get_all_ipv4() -> list[str]:
         """
         Best-effort: return all non-loopback IPv4 addresses for this host.
 
-        This avoids relying on internet connectivity and lets us advertise
-        all usable addresses (e.g. Wi-Fi + internal LAN) at once.
-        """
-        ips: set[str] = set()
+        Ordering:
+            - Ethernet interfaces first
+            - Wi-Fi interfaces next
+            - Other interfaces (docker, bridges, etc.) last
 
-        # 1) Try resolving the hostname to IPv4 addresses.
+        Uses /sys/class/net where available (Linux) to classify interfaces
+        more robustly than just name prefixes, but falls back to getaddrinfo
+        if needed.
+        """
+        import os
+
+        ips_by_prio: dict[int, set[str]] = {0: set(), 1: set(), 2: set()}
+
+        def _is_usable(ip: str) -> bool:
+            return not (
+                ip.startswith("127.") or      # loopback
+                ip.startswith("169.254.")     # link-local
+            )
+
+        # 1) Generic: resolve hostname -> IPv4 addresses (no interface info, medium priority).
         try:
             hostname = socket.gethostname()
             for family, _, _, _, sockaddr in socket.getaddrinfo(hostname, None):
                 if family == socket.AF_INET:
                     ip = sockaddr[0]
-                    ips.add(ip)
+                    if _is_usable(ip):
+                        # Neutral priority (1) so interface-specific info can override.
+                        ips_by_prio[1].add(ip)
         except OSError:
             pass
 
-        # 2) On platforms that support it (e.g. Linux), walk all interfaces
-        #    and query their IPv4 addresses directly.
-        try:
-            # socket.if_nameindex is available on modern Python.
-            if hasattr(socket, "if_nameindex"):
+        # 2) Linux-style interface inspection via /sys/class/net (if available).
+        sys_net = "/sys/class/net"
+        if os.path.isdir(sys_net) and hasattr(socket, "if_nameindex"):
+            try:
                 import fcntl
                 import struct
 
+                def get_interface_type(iface: str) -> str:
+                    base = os.path.join(sys_net, iface)
+                    if not os.path.exists(base):
+                        return "other"
+
+                    # WiFi check
+                    if os.path.isdir(os.path.join(base, "wireless")) or \
+                    os.path.exists(os.path.join(base, "phy80211")):
+                        return "wifi"
+
+                    # Device type from /sys/class/net/<iface>/type
+                    try:
+                        with open(os.path.join(base, "type")) as f:
+                            t = int(f.read().strip())
+                            if t == 1:
+                                return "ethernet"
+                            elif t == 772:
+                                return "loopback"
+                    except Exception:
+                        pass
+
+                    return "other"
+
                 for _, ifname in socket.if_nameindex():
                     name = str(ifname)
-                    # Skip obvious virtual / unwanted interfaces.
-                    if name.startswith(("lo", "docker", "br-", "veth", "virbr")):
+                    iface_type = get_interface_type(name)
+
+                    if iface_type == "loopback":
                         continue
+
+                    # Skip obvious virtual / container bridges by name.
+                    if name.startswith(("docker", "br-", "veth", "virbr")):
+                        continue
+
+                    # Map type -> priority: ethernet (0), wifi (1), other (2)
+                    if iface_type == "ethernet":
+                        prio = 0
+                    elif iface_type == "wifi":
+                        prio = 1
+                    else:
+                        prio = 2
 
                     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                     try:
@@ -430,25 +489,24 @@ class ZconfDiscovery:
                         req = struct.pack("256s", name[:15].encode("utf-8"))
                         res = fcntl.ioctl(s.fileno(), 0x8915, req)
                         ip = socket.inet_ntoa(res[20:24])
-                        ips.add(ip)
+                        if _is_usable(ip):
+                            ips_by_prio[prio].add(ip)
                     except OSError:
                         # Interface might not have an IPv4 address, ignore.
                         pass
                     finally:
                         s.close()
-        except Exception:
-            # Any failure here should not be fatal; we just fall back
-            # to whatever we got from getaddrinfo().
-            pass
+            except Exception:
+                # Any failure here should not be fatal; we just fall back
+                # to whatever we got from getaddrinfo().
+                pass
 
-        # Filter out obvious non-useful addresses (loopback, link-local).
-        def _is_usable(ip: str) -> bool:
-            return not (
-                ip.startswith("127.") or      # loopback
-                ip.startswith("169.254.")     # link-local
-            )
+        # 3) Flatten by priority: ethernet -> wifi -> other.
+        result: list[str] = []
+        for prio in (0, 1, 2):
+            result.extend(sorted(ips_by_prio[prio]))        
+        return result
 
-        return [ip for ip in ips if _is_usable(ip)]
 
     # ------------------------------------------------------------------
     # Cleanup / context manager
