@@ -48,11 +48,11 @@ class Frame:
         if cls is Frame:
             frame_type = data.get("name")
             # if name corresponds to a registered subclass → dispatch
-            if frame_type is not None and frame_type in cls._registry:
+            if frame_type is not None and isinstance(frame_type, str) and frame_type in cls._registry:
                 subcls = cls._registry[frame_type]
                 return subcls.from_dict(data)
 
-        # case 2: called on subclass → regular init
+        # case 2: called on subclass for regular init
         field_names = {f.name for f in fields(cls) if f.name not in ['name', 'timestamp']}
         init_args = {k: v for k, v in data.items() if k in field_names}
         return cls(**init_args)
