@@ -504,8 +504,9 @@ class ZconfDiscovery:
         # 3) Flatten by priority: ethernet -> wifi -> other.
         result: List[str] = []
         for prio in (0, 1, 2):
-            result.extend(sorted(ips_by_prio[prio]))        
-        return result
+            result.extend(sorted(ips_by_prio[prio]))       
+        unique_ips = list(dict.fromkeys(result)) 
+        return unique_ips
 
 
     # ------------------------------------------------------------------
