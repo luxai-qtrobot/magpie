@@ -88,8 +88,7 @@ class ZmqAudioPlayer(SinkNode):
         if not isinstance(frame, (AudioFrameRaw, AudioFrameFlac)):
             Logger.warning(f"{self.name} received unsupported frame type: {frame.name}")
             return
-
-        print(frame)
+        
         # ============================================================
         #  FLAC PATH : Decode compressed FLAC to PCM (np.int16)
         # ============================================================
