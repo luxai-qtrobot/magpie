@@ -399,7 +399,7 @@ class ZconfDiscovery:
         return ips
 
     @staticmethod
-    def _get_all_ipv4() -> list[str]:
+    def _get_all_ipv4() -> List[str]:
         """
         Best-effort: return all non-loopback IPv4 addresses for this host.
 
@@ -502,7 +502,7 @@ class ZconfDiscovery:
                 pass
 
         # 3) Flatten by priority: ethernet -> wifi -> other.
-        result: list[str] = []
+        result: List[str] = []
         for prio in (0, 1, 2):
             result.extend(sorted(ips_by_prio[prio]))        
         return result
