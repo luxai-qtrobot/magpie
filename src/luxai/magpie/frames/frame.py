@@ -36,6 +36,29 @@ class Frame:
         return f"{self.name}#{self.gid}:{self.id}"
 
     def to_dict(frame) -> dict:
+        """
+        Serialize this Frame into the standard wire-format dictionary.
+
+        This method is NOT a generic Python object to dict converter. It produces
+        a strictly defined frame envelope used by Magpie for transport over ZMQ or
+        any other communication layer.
+
+        The resulting dict always contains:
+            {
+                "gid": <str>,        # globally unique frame identifier
+                "id": <int>,         # sequence number or user-set ID
+                "name": <str>,       # frame type name (used for dispatch)
+                "timestamp": <float>,# creation or receive time
+                 <subclass-specific payload fields>
+            }
+
+        Subclasses (e.g. DictFrame, ImageFrameCV) override/extend the payload stored
+        in "value", but the frame envelope remains the same.
+
+        Returns:
+            dict: A wire-format frame dictionary suitable for serialization and
+                transmission. NOT intended to represent arbitrary user data.
+        """        
         # Use fields from the dataclass to dynamically build the dictionary
         frame_dict = {}
         for f in fields(frame):            
@@ -44,6 +67,42 @@ class Frame:
 
     @classmethod
     def from_dict(cls, data):
+        """
+        Deserialize a frame dictionary produced by Frame.to_dict() and reconstruct
+        the appropriate Frame subclass.
+
+        This method is NOT a generic dict to Frame parser. It expects a dictionary
+        that follows the Magpie wire-format schema:
+
+            {
+                "gid": ...,
+                "id": ...,
+                "name": "DictFrame" | "ImageFrameCV" | ...,
+                "timestamp": ...,
+                <subclass-specific payload fields>
+            }
+
+        Dispatch logic:
+            - When called as Frame.from_dict(...):
+                Uses the "name" field to select and call the registered subclass
+                (e.g., DictFrame.from_dict).
+                If no subclass matches, a plain Frame is returned containing only
+                metadata (no payload).
+
+            - When called on a subclass (e.g., DictFrame.from_dict):
+                Builds the object using the subclass's declared dataclass fields.
+
+        Important:
+            Passing an arbitrary dictionary (e.g. {"a": 1, "b": 2}) will NOT embed
+            that data into the Frame, because Frame itself has no payload fields.
+            Only frame-formatted dicts can reconstruct payload-carrying subclasses.
+
+        Args:
+            data (dict): A wire-format frame dictionary created by to_dict().
+
+        Returns:
+            Frame: An instance of Frame or a registered Frame subclass.
+        """        
         # case 1: called on Frame → try dispatch, otherwise fallback to plain Frame
         if cls is Frame:
             frame_type = data.get("name")
