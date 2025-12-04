@@ -23,7 +23,7 @@ class Frame:
         self.gid = self.gid if self.gid else get_uinque_id()
         self.id = self.id if self.id else 0
         self.name = self.__class__.__name__
-        self.timestamp = get_utc_timestamp()
+        self.timestamp = str(get_utc_timestamp())
 
     # --- automatic registration of subclasses ---
     def __init_subclass__(cls, **kwargs):
