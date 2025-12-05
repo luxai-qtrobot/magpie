@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from queue import Empty, Queue
 from threading import Event, Thread
+import time
 from luxai.magpie.utils.logger import Logger
 
 class StreamReader(ABC):
@@ -29,14 +30,20 @@ class StreamReader(ABC):
             self.thread.start()
 
     @abstractmethod
-    def _transport_read_blocking(self) -> (object, str):
+    def _transport_read_blocking(self, timeout: float = None) -> (object, str):
         """
         Abstract method to be implemented by subclasses to define how to read data from the underlying transport.
 
         This method should block until data is available.
 
+        Args:
+            timeout (float, optional): Maximum time to wait for data in seconds.
         Returns:
-            object: The data read from the underlying transport.
+            object: The data read from the underlying transport.            
+
+        Raises:
+            TimeoutError: If no data read within the timeout.
+            Exception: For transport-level failures.            
         """
         pass
 
@@ -60,7 +67,7 @@ class StreamReader(ABC):
         """
         while not self.reader_close_event.is_set():
             try:
-                raw_data = self._transport_read_blocking()
+                raw_data = self._transport_read_blocking(timeout=None)
                 if raw_data is None:
                     continue
                 data, topic = raw_data
@@ -71,24 +78,35 @@ class StreamReader(ABC):
             except Exception as e:
                 Logger.warning(f"{self.name} _read_thread: {str(e)}")
 
-    def read(self) -> (object, str):
+    def read(self, timeout: float = None) -> (object, str):
         """
         Reads data from the stream in a blocking manner.
 
         If a queue is used (queue_size > 0), this method retrieves data from the queue. 
         If no queue is used, it directly calls the _transport_read_blocking method.
 
+        Args:
+            timeout (float, optional): Maximum time to wait for data in seconds.
         Returns:
-            object: The data read from the stream.
+            object: The data read from the underlying transport.            
+
+        Raises:
+            TimeoutError: If no data read within the timeout.
+            Exception: For transport-level failures.
         """
         if self.queue_size <= 0:
-            return self._transport_read_blocking()
+            return self._transport_read_blocking(timeout=timeout)
         
+        queue_timeout = 1 if not timeout else min(timeout, 1)
+        start_t = time.time()
         while not self.reader_close_event.is_set():
             try:
-                return self.reader_queue.get(timeout=2)
+                return self.reader_queue.get(timeout=queue_timeout)
             except Empty:
                 pass
+            # check if timeout occured 
+            if timeout and (time.time() - start_t) > timeout:
+                raise TimeoutError(f"{self.name}: no data received within {timeout} seconds")
 
     def close(self):
         """
