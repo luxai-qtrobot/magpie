@@ -47,7 +47,7 @@ class FakeStreamReader(StreamReader):
         self.transport = transport
         super().__init__(queue_size=queue_size)
 
-    def _transport_read_blocking(self):
+    def _transport_read_blocking(self, timeout: float = None):
         return self.transport.pop(timeout=2)
 
     def _transport_close(self):
