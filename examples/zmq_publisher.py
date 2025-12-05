@@ -6,7 +6,7 @@ from luxai.magpie.utils import Logger
 
 
 if __name__ == '__main__':
-    publisher = ZMQPublisher("tcp://*:5555")
+    publisher = ZMQPublisher("tcp://*:5555", bind=True)
 
     id = 1
     while True: 

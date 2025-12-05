@@ -1,3 +1,4 @@
+import time
 from typing import Union, List
 from luxai.magpie.transport.stream_reader import StreamReader
 from luxai.magpie.utils.logger import Logger
@@ -82,33 +83,41 @@ class ZMQSubscriber(StreamReader):
             f"for topics: {self.topics}, delivery={self.delivery}, queue_size={self.queue_size})"
         )
 
-    def _transport_read_blocking(self) -> (object, str):
+    def _transport_read_blocking(self, timeout: float = None) -> (object, str):
         """
         Reads a message and topic  from the ZeroMQ socket using a poller with timeout.        
         - If _transport_close() has been called (socket/context closed),
           this returns None and stops blocking.
         """
+
         poller = zmq.Poller()
         poller.register(self.socket, zmq.POLLIN)
-
+        start_t = time.time()
         while True:
             # If socket/context already closed, just exit
             if self.socket.closed or self.context.closed:
                 Logger.debug(f"{self.name}: socket/context closed, stop reading.")
                 return None
 
-            try:                
-                events = dict(poller.poll(1000))
+            try:
+                poller_timeout = 1000 if not timeout else min(timeout*1000, 1000)
+                events = dict(poller.poll(poller_timeout))
             except zmq.ZMQError as e:                
-                if self.socket.closed or self.context.closed:                    
+                if self.socket.closed or self.context.closed:
                     return None
                 # Otherwise, let the caller deal with real ZMQ errors
+                Logger.warning(f"{self.name}: transport error during recv: {e}")
                 raise
 
             if self.socket in events and (events[self.socket] & zmq.POLLIN):
                 # Socket is readable; recv and deserialize
                 topic, msg = self.socket.recv_multipart()
                 return self.serializer.deserialize(msg), topic.decode()
+            
+            # check if timeout occured 
+            if timeout and (time.time() - start_t) > timeout:
+                raise TimeoutError(f"{self.name}: no data received within {timeout} seconds")
+
 
     def _transport_close(self): 
         """
