@@ -1,8 +1,11 @@
+from typing import Tuple
 from abc import ABC, abstractmethod
 from queue import Empty, Queue
 from threading import Event, Thread
 import time
+
 from luxai.magpie.utils.logger import Logger
+
 
 class StreamReader(ABC):
     """
@@ -13,6 +16,7 @@ class StreamReader(ABC):
     of the methods to read from and close the underlying data transport. The StreamReader class
     handles the queuing of read data and provides thread-safe access to this data if queue_size > 0. 
     """
+
     def __init__(self, name=None, queue_size=1):
         """
         Initializes the StreamReader with an optional name and sets up the internal queue and thread.
@@ -23,14 +27,19 @@ class StreamReader(ABC):
         """
         self.name = name if name is not None else self.__class__.__name__
         self.queue_size = queue_size
+
+        # Internal flag to make close() idempotent.
+        self._closed = False
+
         if queue_size > 0:
             self.reader_queue = Queue(maxsize=queue_size)
             self.reader_close_event = Event()
-            self.thread = Thread(target=self._read_thread)
+            # Daemon thread so a forgotten close() won't block interpreter shutdown.
+            self.thread = Thread(target=self._read_thread, name=self.name, daemon=True)
             self.thread.start()
 
     @abstractmethod
-    def _transport_read_blocking(self, timeout: float = None) -> (object, str):
+    def _transport_read_blocking(self, timeout: float = None) -> Tuple[object, str] | None:
         """
         Abstract method to be implemented by subclasses to define how to read data from the underlying transport.
 
@@ -65,20 +74,35 @@ class StreamReader(ABC):
         and puts it into the queue. If the queue is full, the oldest data is removed to make room
         for new data.
         """
+        # Use a bounded timeout so we periodically check reader_close_event and can exit promptly.
+        poll_timeout = 1.0
+
         while not self.reader_close_event.is_set():
             try:
-                raw_data = self._transport_read_blocking(timeout=None)
+                raw_data = self._transport_read_blocking(timeout=poll_timeout)
                 if raw_data is None:
+                    # Transport returned no data but not an error; try again.
                     continue
+
                 data, topic = raw_data
                 if self.reader_queue.full():
                     # Logger.debug(f"{self.name} queue is full. dropping old message.")
-                    self.reader_queue.get_nowait()  # Remove the oldest item if the queue is full
+                    try:
+                        self.reader_queue.get_nowait()  # Remove the oldest item if the queue is full
+                    except Empty:
+                        # Race condition: queue became empty; just continue.
+                        pass
+
                 self.reader_queue.put((data, topic))
+            except TimeoutError:
+                # Normal timeout, loop back and check close event.
+                continue
             except Exception as e:
                 Logger.warning(f"{self.name} _read_thread: {str(e)}")
+                # Optionally break on fatal errors; for now, continue trying.
+                continue
 
-    def read(self, timeout: float = None) -> (object, str):
+    def read(self, timeout: float = None) -> Tuple[object, str] | None:
         """
         Reads data from the stream in a blocking manner.
 
@@ -94,19 +118,35 @@ class StreamReader(ABC):
             TimeoutError: If no data read within the timeout.
             Exception: For transport-level failures.
         """
+        # Direct transport read if no queue is used.
         if self.queue_size <= 0:
             return self._transport_read_blocking(timeout=timeout)
-        
-        queue_timeout = 1 if not timeout else min(timeout, 1)
+
+        # If reader is already closed, fail fast.
+        if getattr(self, "reader_close_event", None) is not None and self.reader_close_event.is_set():
+            #raise RuntimeError(f"{self.name}: reader is closed")
+            return None
+
+        # Poll the queue in chunks of up to 1 second so we can check timeouts and close events.
+        if timeout is None:
+            queue_timeout = 1.0
+        else:
+            queue_timeout = min(timeout, 1.0)
+
         start_t = time.time()
         while not self.reader_close_event.is_set():
             try:
                 return self.reader_queue.get(timeout=queue_timeout)
             except Empty:
+                # No data yet, check timeout.
                 pass
-            # check if timeout occured 
-            if timeout and (time.time() - start_t) > timeout:
+
+            # Check if timeout occurred
+            if timeout is not None and (time.time() - start_t) > timeout:
                 raise TimeoutError(f"{self.name}: no data received within {timeout} seconds")
+
+        # Reader was closed while waiting.
+        # raise RuntimeError(f"{self.name}: reader closed while waiting for data")
 
     def close(self):
         """
@@ -115,9 +155,30 @@ class StreamReader(ABC):
         If a queue is used, this method stops the reading thread and waits for it to finish.
         It also calls the _transport_close method to close the underlying transport.
         """
+        # Make close() safe to call multiple times.
+        if self._closed:
+            return
+
+        self._closed = True
+
         if self.queue_size > 0:
-            self.reader_close_event.set()  # Signal the thread to stop            
-            self._transport_close()  # Close the transport
-            self.thread.join()  # Wait for the reading thread to finish            
+            # Signal the thread to stop.
+            self.reader_close_event.set()
+            # Wait for the reading thread to finish (bounded wait).
+            try:
+                self.thread.join(timeout=1.0)
+            except RuntimeError:
+                # Thread may never have been started or already finished.
+                pass
+
+            # Close the transport after the read loop has stopped.
+            try:
+                self._transport_close()
+            except Exception as e:
+                Logger.warning(f"{self.name} close: error closing transport: {e}")
         else:
-            self._transport_close()  # Close the transport
+            # Close the transport immediately if no queue is used.
+            try:
+                self._transport_close()
+            except Exception as e:
+                Logger.warning(f"{self.name} close: error closing transport: {e}")

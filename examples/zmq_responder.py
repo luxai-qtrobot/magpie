@@ -22,6 +22,6 @@ if __name__ == '__main__':
             Logger.warning(f"zmq_responder example timout on responding...")         
         except KeyboardInterrupt:
             Logger.info('stopping...')   
-            server.close()
+            # optioanlly server.close()
             break
     

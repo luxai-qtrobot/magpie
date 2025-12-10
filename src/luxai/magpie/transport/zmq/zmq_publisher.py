@@ -3,6 +3,7 @@ from luxai.magpie.utils.logger import Logger
 from luxai.magpie.serializer.msgpack_serializer import MsgpackSerializer
 from .zmq_utils import zmq
 
+
 class ZMQPublisher(StreamWriter):
     """
     ZMQPublisher class.
@@ -52,7 +53,9 @@ class ZMQPublisher(StreamWriter):
             self.socket.connect(endpoint)
             action = "connected"
 
+        # Start StreamWriter worker thread
         super().__init__(name='ZMQPublisher', queue_size=queue_size)
+
         Logger.debug(
             f"ZMQPublisher is ready ({action} at {self.endpoint}, delivery={self.delivery})"
         )
@@ -63,7 +66,7 @@ class ZMQPublisher(StreamWriter):
 
         Args:
             data (object): The data object to be serialized and sent.
-            topic (str, optional): The topic under which the data is published. Defaults to an empty string.
+            topic (str, optional): The topic under which the data is published.
         """
         try:
             topic = '' if not topic else topic
@@ -74,17 +77,21 @@ class ZMQPublisher(StreamWriter):
             self.socket.send_multipart([topic_bytes, memoryview(payload)], copy=False)
         except Exception as e:
             Logger.warning(f"{self.name} write failed with: {str(e)}")
-        
+
     def _transport_close(self):
         """
         Closes the ZeroMQ socket and performs any necessary cleanup.
         """
         Logger.debug(f"{self.name} is closing.")
-        self.socket.close()        
 
-    def __del__(self):
-        """
-        Destructor to ensure that the socket is closed and resources are cleaned up when the object is deleted.
-        """
-        self.socket.close()        
-        Logger.debug(f"ZMQPublisher is terminated.")
+        try:
+            self.socket.close(linger=0)
+        except Exception as e:
+            Logger.warning(f"{self.name} socket close error: {e}")
+
+        # Close context only if this publisher created it
+        try:
+            if not self.endpoint.startswith("inproc:"):
+                self.context.term()
+        except Exception as e:
+            Logger.warning(f"{self.name} context close error: {e}")

@@ -15,11 +15,13 @@ class ZMQRpcResponder(RpcResponder):
     and sends back serialized responses.
     """
 
-    def __init__(self,
-                 endpoint: str,
-                 serializer: MsgpackSerializer = MsgpackSerializer(),
-                 name: str = None,
-                 bind: bool = True):
+    def __init__(
+        self,
+        endpoint: str,
+        serializer: MsgpackSerializer = MsgpackSerializer(),
+        name: str = None,
+        bind: bool = True
+    ):
         """
         Initializes the ZMQRpcResponder.
 
@@ -67,15 +69,16 @@ class ZMQRpcResponder(RpcResponder):
         """
         # wait for request with timeout
         request_obj, client_identity = self._socket_receive(timeout=timeout)
-        # check request validity. it should be like this:  {"rid": req["rid"], "payload": ...} 
+
+        # check request validity. it should be like this: {"rid": ..., "payload": ...}
         if request_obj is None or "rid" not in request_obj or "payload" not in request_obj:
             raise RuntimeError(f"{self.name}: invalid request format: {request_obj}")
-                
-        # we will put the rid and client identity in the client_ctx so that we can use it later in _transport_send
+
+        # Build client_ctx containing identity + request id
         client_ctx = {
             "identity": client_identity,
-            "rid": request_obj["rid"]
-        }        
+            "rid": request_obj["rid"],
+        }
 
         # send ack back to client: {"rid": request_obj["rid"], "ack": true}
         # we can not use _transport_send here because we need to send different format
@@ -94,37 +97,35 @@ class ZMQRpcResponder(RpcResponder):
     def _socket_receive(self, timeout: float = None) -> object:
         poller = zmq.Poller()
         poller.register(self.socket, zmq.POLLIN)
+
         start_t = time.time()
         while True:
             # If socket/context already closed, just exit
-            if self.socket.closed or self.context.closed:
-                Logger.debug(f"{self.name}: socket/context closed, stop reading.")
+            if self.socket.closed:
+                Logger.debug(f"{self.name}: socket closed, stop reading.")
                 return None, None
 
             try:
-                poller_timeout = 1000 if not timeout else min(timeout*1000, 1000)
-                events = dict(poller.poll(poller_timeout))
-            except zmq.ZMQError as e:                
-                if self.socket.closed or self.context.closed:              
+                poll_ms = 1000 if timeout is None else min(timeout * 1000, 1000)
+                events = dict(poller.poll(poll_ms))
+            except zmq.ZMQError as e:
+                if self.socket.closed:
                     return None, None
-                # Otherwise, let the caller deal with real ZMQ errors
                 Logger.warning(f"{self.name}: transport error during recv: {e}")
                 raise
-            
+
             if self.socket in events and (events[self.socket] & zmq.POLLIN):
                 frames = self.socket.recv_multipart()
                 if len(frames) < 2:
                     raise RuntimeError(f"{self.name}: invalid message format, expected [identity, payload]")
-
                 client_identity = frames[0]
                 payload = frames[-1]
-                request_obj = self.serializer.deserialize(payload)                
+                request_obj = self.serializer.deserialize(payload)
                 return request_obj, client_identity
 
             # check if timeout occured 
-            if timeout and (time.time() - start_t) > timeout:
-                raise TimeoutError(f"{self.name}: no request received within {timeout} seconds")        
-
+            if timeout is not None and (time.time() - start_t) > timeout:
+                raise TimeoutError(f"{self.name}: no request received within {timeout} seconds")
 
     def _transport_send(self, response_obj: object, client_ctx: object) -> None:
         """
@@ -149,11 +150,16 @@ class ZMQRpcResponder(RpcResponder):
         Closes the ZeroMQ socket and performs any necessary cleanup.
         """
         Logger.debug(f"{self.name} is closing ZMQ ROUTER socket.")
-        self.socket.close()        
 
-    def __del__(self):        
-        """
-        Destructor to ensure that the socket is closed and resources are cleaned up when the object is deleted.
-        """
-        self.socket.close()        
-        Logger.debug(f"ZMQRpcResponder is terminated.")
+        # Close socket immediately
+        try:
+            self.socket.close(linger=0)
+        except Exception as e:
+            Logger.warning(f"{self.name}: socket close error: {e}")
+
+        # Terminate context if we created it
+        try:
+            if not self.endpoint.startswith("inproc:"):
+                self.context.term()
+        except Exception as e:
+            Logger.warning(f"{self.name}: context close error: {e}")

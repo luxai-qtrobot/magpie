@@ -101,27 +101,31 @@ class ZconfDiscovery:
         self._nodes: Dict[str, NodeInfo] = {}
 
         # Currently advertised service (if this process is advertising)
-        self._advertised_info: Optional[ServiceInfo] = None
+        self._advertised_info: Optional["ServiceInfo"] = None  # type: ignore[name-defined]
+
+        # Closed flag to make close() idempotent.
+        self._closed = False
 
         # Listener that updates _nodes on add/update/remove
         class _Listener:
             def __init__(self, parent: "ZconfDiscovery") -> None:
                 self._parent = parent
 
-            def add_service(self, zeroconf: Zeroconf, service_type: str, name: str) -> None:
+            def add_service(self, zeroconf: "Zeroconf", service_type: str, name: str) -> None:  # type: ignore[name-defined]
                 # Logger.debug(f"[ZconfDiscovery] add_service: type={service_type}, name={name}")
                 self._parent._on_service_added_or_updated(service_type, name)
 
-            def update_service(self, zeroconf: Zeroconf, service_type: str, name: str) -> None:
+            def update_service(self, zeroconf: "Zeroconf", service_type: str, name: str) -> None:  # type: ignore[name-defined]
                 # Logger.debug(f"[ZconfDiscovery] update_service: type={service_type}, name={name}")
                 self._parent._on_service_added_or_updated(service_type, name)
 
-            def remove_service(self, zeroconf: Zeroconf, service_type: str, name: str) -> None:
+            def remove_service(self, zeroconf: "Zeroconf", service_type: str, name: str) -> None:  # type: ignore[name-defined]
                 # Logger.debug(f"[ZconfDiscovery] remove_service: type={service_type}, name={name}")
                 self._parent._on_service_removed(service_type, name)
 
         self._listener = _Listener(self)
         self._browser = ServiceBrowser(self._zc, self._service_type, self._listener)
+
         # wake up multicast on some platform        
         try:
             # bogus instance name just to force a query / network activity
@@ -129,7 +133,6 @@ class ZconfDiscovery:
             self._zc.get_service_info(self._service_type, dummy_name, timeout=500)
         except Exception:
             pass
-
 
     # ------------------------------------------------------------------
     # Advertising
@@ -222,8 +225,6 @@ class ZconfDiscovery:
         Returns:
             A NodeInfo instance, or None if not found within the timeout.
         """
-        deadline = threading.current_thread()  # dummy to avoid linter warning; real code below
-        deadline = None  # type: ignore[assignment]
         # Using time inside the lock to avoid subtle races
         import time as _time
         deadline = _time.time() + timeout
@@ -448,7 +449,7 @@ class ZconfDiscovery:
 
                     # WiFi check
                     if os.path.isdir(os.path.join(base, "wireless")) or \
-                    os.path.exists(os.path.join(base, "phy80211")):
+                       os.path.exists(os.path.join(base, "phy80211")):
                         return "wifi"
 
                     # Device type from /sys/class/net/<iface>/type
@@ -504,10 +505,9 @@ class ZconfDiscovery:
         # 3) Flatten by priority: ethernet -> wifi -> other.
         result: List[str] = []
         for prio in (0, 1, 2):
-            result.extend(sorted(ips_by_prio[prio]))       
-        unique_ips = list(dict.fromkeys(result)) 
+            result.extend(sorted(ips_by_prio[prio]))
+        unique_ips = list(dict.fromkeys(result))
         return unique_ips
-
 
     # ------------------------------------------------------------------
     # Cleanup / context manager
@@ -518,6 +518,10 @@ class ZconfDiscovery:
 
         After calling close(), this object should not be used anymore.
         """
+        if self._closed:
+            return
+        self._closed = True
+
         self.stop_advertising()
         try:
             self._zc.close()

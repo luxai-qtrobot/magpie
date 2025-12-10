@@ -32,7 +32,7 @@ if __name__ == '__main__':
         time.sleep(100)
     except KeyboardInterrupt:
         print("Keyboard interupt")
-    finally:        
-        node2.terminate()
-        node3.terminate()
+    
+    # optionally node2.terminate()
+    # optionally node3.terminate()
         
