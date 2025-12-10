@@ -39,7 +39,7 @@ class StreamReader(ABC):
             self.thread.start()
 
     @abstractmethod
-    def _transport_read_blocking(self, timeout: float = None) -> Tuple[object, str] | None:
+    def _transport_read_blocking(self, timeout: float = None) -> Tuple[object, str]:
         """
         Abstract method to be implemented by subclasses to define how to read data from the underlying transport.
 
@@ -102,7 +102,7 @@ class StreamReader(ABC):
                 # Optionally break on fatal errors; for now, continue trying.
                 continue
 
-    def read(self, timeout: float = None) -> Tuple[object, str] | None:
+    def read(self, timeout: float = None) -> Tuple[object, str]:
         """
         Reads data from the stream in a blocking manner.
 
