@@ -22,6 +22,7 @@ class MyNode(BaseNode):
 
 if __name__ == '__main__':
 
+    Logger.set_level("DEBUG")
     node = MyNode(name="SimpleNode", setup_kwargs={'message': "Printing"})    
     try:
         time.sleep(5)
@@ -31,5 +32,5 @@ if __name__ == '__main__':
         time.sleep(10)        
     except KeyboardInterrupt:
         pass
-    finally:
-        node.terminate()
+
+    # optionally call node.terminate()

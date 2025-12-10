@@ -39,7 +39,9 @@ class ProcessNode(BaseNode):
         
         Args:
             timeout (float, optional): The maximum time to wait for the node to terminate. Defaults to None.
-        """
+        """        
+        if getattr(self, "_terminated", False):
+            return
         if self.stream_writer:
             self.stream_writer.close()
         if self.stream_reader:

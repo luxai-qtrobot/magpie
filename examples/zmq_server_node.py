@@ -32,4 +32,4 @@ if __name__ == '__main__':
             time.sleep(10)
     except KeyboardInterrupt:
         Logger.info("Stopping server...")
-        server.terminate()
+        # optionally server.terminate()

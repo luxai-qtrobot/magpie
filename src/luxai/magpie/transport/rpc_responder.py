@@ -20,7 +20,8 @@ class RpcResponder(ABC):
         Args:
             name (str, optional): The name for this responder. Defaults to class name.
         """
-        self.name = name if name is not None else self.__class__.__name__        
+        self.name = name if name is not None else self.__class__.__name__    
+        self._closed = False    
 
     @abstractmethod
     def _transport_recv(self, timeout: float = None) -> tuple:
@@ -84,6 +85,9 @@ class RpcResponder(ABC):
             TimeoutError: If no request arrives in time.
             Exception: For transport-level or handler errors.
         """
+        if self._closed:
+            raise RuntimeError(f"{self.name} is closed")
+        
         try:
             request_obj, client_ctx = self._transport_recv(timeout=timeout)
         except TimeoutError:
@@ -101,4 +105,5 @@ class RpcResponder(ABC):
         """
         Closes the responder and its underlying transport.
         """
+        self._closed = True
         self._transport_close()

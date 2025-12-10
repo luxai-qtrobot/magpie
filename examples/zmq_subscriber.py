@@ -16,6 +16,6 @@ if __name__ == '__main__':
             Logger.debug(e)
         except KeyboardInterrupt:
             Logger.info('stopping...')   
-            subscriber.close()
+            # optionally subscriber.close()
             break
     

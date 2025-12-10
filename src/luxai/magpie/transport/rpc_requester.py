@@ -25,7 +25,8 @@ class RpcRequester(ABC):
         Args:
             name (str, optional): The name for this requester. Defaults to class name.
         """
-        self.name = name if name is not None else self.__class__.__name__        
+        self.name = name if name is not None else self.__class__.__name__      
+        self._closed = False  
 
     @abstractmethod
     def _transport_call(self, request_obj: object, timeout: float = None) -> object:
@@ -44,10 +45,12 @@ class RpcRequester(ABC):
 
         Returns:
             object: The response object.
-
+        
         Raises:
-            TimeoutError: If no reply is received within the timeout.
-            Exception: For transport-level failures.
+            RuntimeError: If the requester is already closed.
+            ReplyTimeoutError: If no reply arrives in time.
+            AckTimeoutError: If no acknowledgment for receipt arrives in time.
+            Exception: For transport-level errors.
         """
         pass
 
@@ -75,6 +78,8 @@ class RpcRequester(ABC):
             AckTimeoutError: If no acknowledgment for receipt arrives in time.
             Exception: For transport-level errors.
         """
+        if self._closed:
+            raise RuntimeError(f"{self.name} is closed")
         try:
             return self._transport_call(request_obj, timeout=timeout)
         except Exception as e:
@@ -85,4 +90,5 @@ class RpcRequester(ABC):
         """
         Closes the requester and its underlying transport.
         """
+        self._closed = True    
         self._transport_close()

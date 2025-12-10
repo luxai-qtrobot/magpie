@@ -50,14 +50,13 @@ if __name__ == '__main__':
 
     node1 = PubNode(endpoint="tcp://*:5555")
     node2 = SubNode(endpoint="tcp://127.0.0.1:5555")
-    # node1 = PubNode(endpoint="inproc://my_publisher")
-    # node2 = SubNode(endpoint="inproc://my_publisher")
 
     try:
         time.sleep(100)
     except KeyboardInterrupt:
         print("Keyboard interupt")
-    finally:        
-        node1.terminate()
-        node2.terminate()
+    
+    # optionally:        
+    # node1.terminate()
+    # node2.terminate()
         

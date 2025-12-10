@@ -31,5 +31,5 @@ if __name__ == '__main__':
             Logger.warning(f"zmq_requester example timout on call...")
         except KeyboardInterrupt:
             Logger.info('stopping...')   
-            client.close()
+            # optionally client.close()
             break
