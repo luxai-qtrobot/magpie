@@ -98,7 +98,7 @@ class StreamWriter(ABC):
         """
         # If the writer is already closed, avoid queuing or writing and log a warning.
         if self._closed:
-            Logger.warning(f"{self.name} write() called after close(); dropping message.")
+            Logger.debug(f"{self.name} write() called after close(); dropping message.")
             return
 
         if self.queue_size <= 0:
