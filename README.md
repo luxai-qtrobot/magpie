@@ -64,6 +64,9 @@ pip install "luxai-magpie[audio]"
 # Image-related frames (e.g. ImageFrameJpeg, ImageFrameCV)
 pip install "luxai-magpie[video]"
 
+# Discovery over local network
+pip install "luxai-magpie[discovery]"
+
 # All media features
 pip install "luxai-magpie[full]"
 
@@ -126,7 +129,7 @@ if __name__ == '__main__':
             time.sleep(1)
         except KeyboardInterrupt:
             Logger.info('stopping...')   
-            subscriber.close()
+            subscriber.close() # optional
             break    
 ```
 
@@ -147,7 +150,7 @@ if __name__ == '__main__':
     except TimeoutError:
         Logger.info('timeout')   
     
-    client.close()
+    client.close() # optional
 ```
 
 ### Responder
@@ -170,7 +173,7 @@ if __name__ == '__main__':
             pass
         except KeyboardInterrupt:
             Logger.info('stopping...')
-            server.close()
+            server.close() # optional
             break      
 ```
 
