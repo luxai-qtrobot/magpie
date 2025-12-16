@@ -9,7 +9,7 @@ import cv2
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.nodes.source_node import SourceNode
 from luxai.magpie.transport.zmq.zmq_publisher import ZMQPublisher
-from luxai.magpie.frames.image import ImageFrameCV, ImageFrameJpeg
+from luxai.magpie.frames.image import ImageFrameCV, ImageFrameJpeg, ImageFrameRaw
 
 
 class ZmqVideoCapture(SourceNode):
@@ -35,7 +35,27 @@ class ZmqVideoCapture(SourceNode):
         ret, image = self.cap.read()
 
         # Select encoding method
-        if self.encoder == "cv":
+        if self.encoder == "raw":            
+            # Infer dimensions and channels from the OpenCV image
+            if image.ndim == 2:
+                height, width = image.shape
+                channels = 1
+                pixel_format = 'GRAY'
+            elif image.ndim == 3:
+                height, width, channels = image.shape
+                # OpenCV default color order
+                pixel_format = 'BGR'
+            else:
+                raise ValueError(f"Unsupported image shape: {image.shape}")
+            
+            frame = ImageFrameRaw(
+                data=image.data.tobytes(),                
+                width=width,
+                height=height,
+                channels=channels,
+                pixel_format=pixel_format
+                )
+        elif self.encoder == "cv":
             frame = ImageFrameCV.from_cv_image(image)
         else:  # turbojpeg
             frame = ImageFrameJpeg.from_np_image(image, quality=80, pixel_format="BGR")
@@ -73,8 +93,8 @@ def main():
                         default=[1280, 720])
 
     parser.add_argument("--encoder",
-                        choices=["cv", "jpeg"],
-                        default="cv",
+                        choices=["raw", "cv", "jpeg"],
+                        default="raw",
                         help="Encoding backend: 'cv' for ImageFrameCV, 'jpeg' for ImageFrameJpeg")
 
     args = parser.parse_args()
