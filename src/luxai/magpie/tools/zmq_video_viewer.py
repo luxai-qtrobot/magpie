@@ -11,7 +11,7 @@ from collections import deque
 from luxai.magpie.utils import Logger
 from luxai.magpie.nodes import SinkNode
 from luxai.magpie.transport import ZMQSubscriber
-from luxai.magpie.frames import Frame, ImageFrameCV, ImageFrameJpeg
+from luxai.magpie.frames import Frame, ImageFrameCV, ImageFrameJpeg, ImageFrameRaw
 
 
 class ZmqVideoViewer(SinkNode):
@@ -32,13 +32,15 @@ class ZmqVideoViewer(SinkNode):
 
         # Let the Frame factory pick the right subclass
         try:
-            frame = Frame.from_dict(data)
+            frame = Frame.from_dict(data)            
         except Exception as e:
             Logger.warning(f"{self.name} failed to deserialize frame: {e}")
             return
 
         # Accept only the image frame types we know how to render
-        if isinstance(frame, ImageFrameCV):
+        if isinstance(frame, ImageFrameRaw):
+            image = np.frombuffer(frame.data, np.uint8).reshape(frame.height, frame.width, frame.channels)
+        elif isinstance(frame, ImageFrameCV):
             image = frame.to_cv_image()
         elif isinstance(frame, ImageFrameJpeg):
             # Decode to BGR so OpenCV can display it directly
