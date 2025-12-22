@@ -11,14 +11,17 @@ from luxai.magpie.utils import Logger
 
 def on_request(req: object):
     Logger.info(f"on_request: {req}")
+    time.sleep(1)  # simulate some work
     return {"echo": req}
 
 
 if __name__ == '__main__':
+    Logger.set_level("DEBUG")
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("-a", "--address", 
                         help="ZeroMQ server socket endpoint (e.g. tcp://*:5555)",
-                        default="tcp://*:5555",                        
+                        default="tcp://*:5555",
                         type=str)
 
 
