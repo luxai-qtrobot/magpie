@@ -78,6 +78,7 @@ cli = [
 
 [project.scripts]
 magpie-audio-player = "luxai.magpie.tools.zmq_audio_player:main"
+magpie-audio-capture = "luxai.magpie.tools.zmq_audio_capture:main"
 magpie-video-viewer = "luxai.magpie.tools.zmq_video_viewer:main"
 magpie-video-capture = "luxai.magpie.tools.zmq_video_capture:main"
 

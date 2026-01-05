@@ -76,6 +76,12 @@ def main():
         type=str,
     )
 
+    parser.add_argument(
+        "--connect",
+        help="connect the ZeroMQ socket instead of binding",
+        action="store_false"
+    )
+
     parser.add_argument("-c", "--camera", 
                         help="opencv capturing camera id (e.g. 0)",
                         default=0,       
@@ -102,7 +108,7 @@ def main():
     node = ZmqVideoCapture(name='MagpieVideoCapture',
                             stream_writer=ZMQPublisher(
                                 endpoint=args.endpoint,                                 
-                                bind=True,
+                                bind=args.connect,
                                 queue_size=0,                                 
                                 delivery="latest"),
                             setup_kwargs={
