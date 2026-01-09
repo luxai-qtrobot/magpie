@@ -6,6 +6,7 @@ import cv2
 
 
 
+from luxai.magpie.utils.common import get_uinque_id
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.nodes.source_node import SourceNode
 from luxai.magpie.transport.zmq.zmq_publisher import ZMQPublisher
@@ -19,6 +20,9 @@ class ZmqVideoCapture(SourceNode):
         self.encoder = encoder
         self.cap = cv2.VideoCapture(camera)
         self.topic = topic
+        self.frame_gid = get_uinque_id()
+        self._frame_id_counter = 0
+
                 
         if frame_rate > 0:
             self.cap.set(cv2.CAP_PROP_FPS, frame_rate)        
@@ -60,6 +64,9 @@ class ZmqVideoCapture(SourceNode):
         else:  # turbojpeg
             frame = ImageFrameJpeg.from_np_image(image, quality=80, pixel_format="BGR")
 
+        frame.gid = self.frame_gid
+        frame.id = self._frame_id_counter  
+        self._frame_id_counter += 1      
         self.stream_writer.write(frame.to_dict(), topic=self.topic)
                 
 

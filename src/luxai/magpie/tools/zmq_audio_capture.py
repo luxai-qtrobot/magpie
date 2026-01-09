@@ -36,6 +36,7 @@ except ImportError:
     sf = None  # only required if encoder=flac
 
 from luxai.magpie.utils.logger import Logger
+from luxai.magpie.utils.common import get_uinque_id
 from luxai.magpie.nodes.source_node import SourceNode
 from luxai.magpie.transport.zmq.zmq_publisher import ZMQPublisher
 from luxai.magpie.frames import AudioFrameRaw, AudioFrameFlac
@@ -65,6 +66,8 @@ class ZmqAudioCapture(SourceNode):
         self.latency = latency
         self.encoder = encoder
         self.topic = topic
+        self.frame_gid = get_uinque_id()
+        self._frame_id_counter = 0
 
         # We publish int16 PCM for RAW and also encode FLAC from int16.
         # Keep bit_depth in metadata for the player (_dtype_from_bitdepth).
@@ -202,7 +205,10 @@ class ZmqAudioCapture(SourceNode):
         else:
             raise ValueError("Unsupported encoder. Use: raw, flac")
 
+        frame.gid = self.frame_gid
+        frame.id = self._frame_id_counter        
         self.stream_writer.write(frame.to_dict(), topic=self.topic)
+        self._frame_id_counter += 1
 
     def terminate(self):
         try:
