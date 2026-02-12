@@ -20,8 +20,10 @@ class ZmqVideoCapture(SourceNode):
         self.encoder = encoder
         self.cap = cv2.VideoCapture(camera)
         self.topic = topic
+        self.frame_rate = frame_rate if frame_rate > 0 else 30
         self.frame_gid = get_uinque_id()
         self._frame_id_counter = 0
+        self._frame_write_time = None
 
                 
         if frame_rate > 0:
@@ -31,11 +33,12 @@ class ZmqVideoCapture(SourceNode):
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
         actual_w = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
         actual_h = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
-        Logger.info(f"{self.name} initilized with size=({actual_w}, {actual_h}) and fps={actual_fps}")
+        # actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
+        Logger.info(f"{self.name} initilized with size=({actual_w}x{actual_h}) and fps={self.frame_rate}")
         Logger.info(f"{self.name} streaming video on {self.stream_writer.endpoint} using {self.encoder} encoding.")    
 
     def process(self):        
+        self._frame_write_time = time.time()
         ret, image = self.cap.read()
 
         # Select encoding method
@@ -66,9 +69,15 @@ class ZmqVideoCapture(SourceNode):
 
         frame.gid = self.frame_gid
         frame.id = self._frame_id_counter  
-        self._frame_id_counter += 1      
+        self._frame_id_counter += 1        
         self.stream_writer.write(frame.to_dict(), topic=self.topic)
-                
+
+        # ensure frame rate 
+        time_diff = time.time() - self._frame_write_time
+        frame_period = 1.0 / float(self.frame_rate)
+        if time_diff < frame_period:
+            time.sleep(frame_period - time_diff)
+
 
 
 def main():
