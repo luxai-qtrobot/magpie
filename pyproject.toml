@@ -83,6 +83,7 @@ magpie-video-viewer = "luxai.magpie.tools.zmq_video_viewer:main"
 magpie-video-capture = "luxai.magpie.tools.zmq_video_capture:main"
 magpie-request = "luxai.magpie.tools.zmq_request:main"
 magpie-subscribe = "luxai.magpie.tools.zmq_subscribe:main"
+magpie-publish = "luxai.magpie.tools.zmq_publish:main"
 
 # -----------------------------
 # setuptools configuration
