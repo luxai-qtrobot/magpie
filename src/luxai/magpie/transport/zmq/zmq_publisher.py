@@ -1,8 +1,10 @@
+
 from luxai.magpie.transport.stream_writer import StreamWriter
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.serializer.msgpack_serializer import MsgpackSerializer
 from .zmq_utils import zmq
-
+import zmq.utils.monitor
+import time
 
 class ZMQPublisher(StreamWriter):
     """
@@ -34,6 +36,7 @@ class ZMQPublisher(StreamWriter):
         self.endpoint = endpoint
         self.serializer = serializer
         self.delivery = delivery
+        self.bind = bind
 
         # Use shared context for inproc, otherwise a new context
         self.context = zmq.Context.instance() if endpoint.startswith('inproc:') else zmq.Context()
@@ -95,3 +98,29 @@ class ZMQPublisher(StreamWriter):
                 self.context.term()
         except Exception as e:
             Logger.warning(f"{self.name} context close error: {e}")
+
+    def wait_connect(self, timeout: float = None) -> bool:
+        if self.bind:
+            return True
+
+        monitor = self.socket.get_monitor_socket()
+        monitor.setsockopt(zmq.RCVTIMEO, 100)  # poll every 100ms
+        connected = False
+        start_t = time.time()
+        try:
+            while not self._closed:
+                if timeout is not None and (time.time() - start_t) > timeout:
+                    Logger.debug(f"ZMQPublisher: wait_connect timed out after {timeout}s (endpoint={self.endpoint})")
+                    break
+                try:
+                    evt = zmq.utils.monitor.recv_monitor_message(monitor)
+                    if evt['event'] == zmq.EVENT_CONNECTED:
+                        connected = True
+                        time.sleep(0.1)  # small delay to ensure connection is fully established                        
+                        break
+                except zmq.Again:
+                    continue
+        finally:
+            self.socket.disable_monitor()
+
+        return connected
