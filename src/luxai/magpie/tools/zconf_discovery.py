@@ -39,7 +39,7 @@ def _print_nodes(nodes: dict, pretty: bool):
             Logger.info(json.dumps(d, indent=2, ensure_ascii=False))
         else:
             Logger.info(json.dumps(d, separators=(",", ":"), ensure_ascii=False))
-
+        print("")
 
 def cmd_scan(args):
     from luxai.magpie.discovery.zconf_discovery import ZconfDiscovery
