@@ -238,14 +238,11 @@ def main():
         type=str,
     )
 
-    # Default is bind=True (publisher binds). If --connect is set, bind becomes False.
     parser.add_argument(
-        "--connect",
-        dest="bind",
-        help="Connect the ZeroMQ socket instead of binding (default: bind)",
-        action="store_false",
+        "--bind",
+        action="store_true",
+        help="Bind the publisher socket instead of connecting (default: connect).",
     )
-    parser.set_defaults(bind=True)
 
     parser.add_argument(
         "--device",

@@ -2,52 +2,49 @@
   <img src="https://github.com/luxai-qtrobot/magpie/raw/main/src/luxai/magpie/assets/magpie.png" alt="MAGPIE Logo" width="200"/>
 </p>
 
-# MAGPIE – Message Abstraction & General-Purpose Integration Engine
+<h1 align="center">MAGPIE</h1>
+<p align="center"><em>Message Abstraction & General-Purpose Integration Engine</em></p>
 
-> **MAGPIE is a lightweight, modular messaging engine providing high-performance pub/sub and RPC over pluggable transports.**
+<p align="center">
+  <a href="https://github.com/luxai-qtrobot/magpie/actions/workflows/python-tests.yml">
+    <img src="https://github.com/luxai-qtrobot/magpie/actions/workflows/python-tests.yml/badge.svg" alt="Test Status"/>
+  </a>
+  <a href="https://pypi.org/project/luxai-magpie/">
+    <img src="https://img.shields.io/pypi/v/luxai-magpie" alt="PyPI version"/>
+  </a>
+  <a href="https://pypi.org/project/luxai-magpie/">
+    <img src="https://img.shields.io/pypi/pyversions/luxai-magpie" alt="Python versions"/>
+  </a>
+  <a href="https://github.com/luxai-qtrobot/magpie/blob/main/LICENSE">
+    <img src="https://img.shields.io/pypi/l/luxai-magpie" alt="License"/>
+  </a>
+</p>
 
-![Test Status](https://github.com/luxai-qtrobot/magpie/actions/workflows/python-tests.yml/badge.svg)
+---
 
+MAGPIE is a lightweight, modular messaging engine for distributed Python systems. It provides a clean abstraction over pub/sub streams, request/response RPC, and network discovery — built on top of ZeroMQ and msgpack, with a pluggable transport layer.
 
-MAGPIE is a small but powerful building block for distributed Python systems.  
-It gives you a clean abstraction over:
-
-- **Messaging patterns:** pub/sub streams and request/response RPC
-- **Transports:** currently ZeroMQ, with a pluggable transport layer
-- **Serialization:** abstract serializer interface, with msgpack implementation
-- **Node helpers:** base classes for building streaming and RPC nodes
-- **Frames:** typed data frames for audio, images, and generic payloads
-
-Originally built for **QTrobot** at LuxAI, MAGPIE is generic enough to be used in any Python-based distributed system or AI pipeline.
+Originally developed at **[LuxAI](https://luxai.com)** for the [QTrobot](https://luxai.com/qtrobot-for-research/) ecosystem, MAGPIE is generic enough for any Python-based distributed or AI pipeline.
 
 ---
 
 ## Features
 
-- 📨 **High-level messaging API**
-  - Stream-oriented **pub/sub** (`StreamWriter`, `StreamReader`)
-  - **RPC** request/response (`RpcRequester`, `RpcResponder`)
-- 🔌 **Pluggable transports**
-  - ZeroMQ-based implementations (`magpie.transport.zmq.*`)
-  - Local in-memory transport for testing
-- 📦 **Serialization abstraction**
-  - Serializer interface
-  - Msgpack-based serializer by default
-- 🧱 **Node helper classes**
-  - Base node, process node, server node, source/sink node helpers
-  - Facilities for threaded servers and callback-style processing
-- 🧊 **Typed frames**
-  - Generic `Frame` base class
-  - Image frames: e.g. `ImageFrameJpeg`, `ImageFrameCV`
-  - Audio frames: e.g. `AudioFrameRaw`, `AudioFrameFlac`
-- 🧩 **Optional dependencies**
-  - Core remains light; image/audio extras are opt-in
+- **Pub/Sub streaming** — high-throughput topic-based messaging via `StreamWriter` / `StreamReader`
+- **Request/Response RPC** — synchronous and async-friendly RPC via `ZMQRpcRequester` / `ZMQRpcResponder`
+- **Pluggable transports** — ZeroMQ today; add MQTT, WebRTC, or any custom transport without changing user code
+- **Fast serialization** — msgpack by default; bring your own serializer via the abstract interface
+- **Typed frames** — `ImageFrameJpeg`, `ImageFrameCV`, `AudioFrameRaw`, `AudioFrameFlac`, and more
+- **Node helpers** — base classes (`SourceNode`, `SinkNode`, `ServerNode`, …) to build robust streaming services
+- **Network discovery** — mDNS/Zeroconf node advertisement and scanning via `ZconfDiscovery`
+- **CLI tools** — ready-to-use command-line tools for publishing, subscribing, RPC, video/audio streaming, and discovery
+- **Lightweight core** — heavy media dependencies (NumPy, OpenCV, soundfile) are fully opt-in
 
 ---
 
 ## Installation
 
-Base installation (lightweight, no image/audio extras):
+### Core (pub/sub + RPC only)
 
 ```bash
 pip install luxai-magpie
@@ -55,250 +52,245 @@ pip install luxai-magpie
 
 ### Optional extras
 
-MAGPIE keeps heavy dependencies optional and uses **lazy imports** inside the library. Install only what you need:
-
-```bash
-# Audio-related frames (e.g. AudioFrameFlac)
-pip install "luxai-magpie[audio]"
-
-# Image-related frames (e.g. ImageFrameJpeg, ImageFrameCV)
-pip install "luxai-magpie[video]"
-
-# Discovery over local network
-pip install "luxai-magpie[discovery]"
-
-# All media features
-pip install "luxai-magpie[full]"
-
-```
+| Extra | What it adds |
+|---|---|
+| `pip install "luxai-magpie[video]"` | Image frames (OpenCV, simplejpeg) |
+| `pip install "luxai-magpie[audio]"` | Audio frames (soundfile) |
+| `pip install "luxai-magpie[discovery]"` | Network discovery (zeroconf) |
+| `pip install "luxai-magpie[cli]"` | All CLI tools (video, audio, discovery) |
+| `pip install "luxai-magpie[full]"` | Everything above |
 
 ---
 
-## Supported environment
+## Supported Platforms
 
-- **Python:** 3.7.3 and newer
-- **OS / platforms (tested)**
-  - Linux (x86_64, ARM)
-  - Windows
-  - Raspberry Pi/NVIDIA Jetson (ARMv7 / ARM64)
+- **Python:** 3.7.3+
+- **Linux** (x86\_64, ARM, Raspberry Pi, NVIDIA Jetson)
+- **Windows**
+- **macOS**
 
 ---
 
-## Quick Start Example
+## Quick Start
 
-A minimal **pub/sub** example using the ZeroMQ transport.
+### Pub/Sub
 
-### Publisher
+**Publisher:**
 
 ```python
 import time
 from luxai.magpie.transport import ZMQPublisher
-from luxai.magpie.utils import Logger
 
-if __name__ == '__main__':    
-    publisher = ZMQPublisher("tcp://*:5555")
-    id = 1
-    while True: 
-        try:
-            publisher.write({'name': 'Bob', 'last': 'Job'}, topic='/mytopic')
-            Logger.info(f'publishing {id} ...')
-            id = id + 1
-            time.sleep(1)
-        except KeyboardInterrupt:
-            Logger.info('stopping...')
-            publisher.close()
-            break
-
+publisher = ZMQPublisher("tcp://*:5555")
+i = 0
+while True:
+    try:
+        publisher.write({'id': i, 'value': 'hello'}, topic='/mytopic')
+        i += 1
+        time.sleep(1)
+    except KeyboardInterrupt:
+        publisher.close()
+        break
 ```
 
-### Subscriber
+**Subscriber:**
 
 ```python
-import time
 from luxai.magpie.transport import ZMQSubscriber
-from luxai.magpie.utils import Logger
 
-if __name__ == '__main__':
-    Logger.set_level("DEBUG")
-    subscriber = ZMQSubscriber("tcp://127.0.0.1:5555", topic=['/mytopic'], bind=False)
-
-    while True: 
-        try:
-            data, topic = subscriber.read()            
-            Logger.info(f"received {topic} : {data}")
-            time.sleep(1)
-        except KeyboardInterrupt:
-            Logger.info('stopping...')   
-            subscriber.close() # optional
-            break    
+subscriber = ZMQSubscriber("tcp://127.0.0.1:5555", topic=['/mytopic'], bind=False)
+while True:
+    try:
+        data, topic = subscriber.read()
+        print(f"{topic}: {data}")
+    except KeyboardInterrupt:
+        subscriber.close()
+        break
 ```
 
-Her is a minimal **req/resp** example using the ZeroMQ transport.
+### Request / Response RPC
 
-### Requester
+**Requester:**
 
 ```python
 from luxai.magpie.transport import ZMQRpcRequester
-from luxai.magpie.utils import Logger
 
-if __name__ == '__main__':
-    Logger.set_level("DEBUG")
-    client = ZMQRpcRequester("tcp://127.0.0.1:5556")
-    try:            
-        ret = client.call({'payload': 'hello'}, timeout=3.0)
-        Logger.info(f"Got response {ret}")
-    except TimeoutError:
-        Logger.info('timeout')   
-    
-    client.close() # optional
+client = ZMQRpcRequester("tcp://127.0.0.1:5556")
+try:
+    response = client.call({'action': 'greet', 'name': 'Bob'}, timeout=3.0)
+    print("Response:", response)
+except TimeoutError:
+    print("Request timed out")
+finally:
+    client.close()
 ```
 
-### Responder
+**Responder:**
 
 ```python
 from luxai.magpie.transport import ZMQRpcResponder
-from luxai.magpie.utils import Logger
 
-def on_request(req : object):
-    Logger.info(f"on_request: {req}")
-    return req
+def handle(request):
+    print("Got request:", request)
+    return {'status': 'ok', 'echo': request}
 
-if __name__ == '__main__':
-    server = ZMQRpcResponder("tcp://*:5556")
+server = ZMQRpcResponder("tcp://*:5556")
+while True:
+    try:
+        server.handle_once(handler=handle, timeout=1.0)
+    except TimeoutError:
+        pass
+    except KeyboardInterrupt:
+        server.close()
+        break
+```
 
-    while True: 
-        try:
-            status = server.handle_once(handler=on_request, timeout=1.0)
-        except TimeoutError:
-            pass
-        except KeyboardInterrupt:
-            Logger.info('stopping...')
-            server.close() # optional
-            break      
+### Network Discovery
+
+```python
+from luxai.magpie.discovery import ZconfDiscovery
+
+# Advertise a node
+with ZconfDiscovery() as disc:
+    disc.advertise_node("my-robot", port=5555, payload={"role": "robot"})
+    input("Press Enter to stop advertising...")
+
+# Discover nodes
+with ZconfDiscovery() as disc:
+    info = disc.resolve_node("my-robot", timeout=5.0)
+    if info:
+        ip = disc.pick_best_ip(info)
+        print(f"Found at tcp://{ip}:{info.port}")
 ```
 
 ---
 
-## Command-Line Tools (Optional)
+## Command-Line Tools
 
-MAGPIE provides lightweight CLI tools for streaming **video** and **audio** over ZeroMQ.
-
-## Installation
+Install with:
 
 ```bash
 pip install "luxai-magpie[cli]"
 ```
 
-This installs the required optional dependencies and enables these CLI commands:
-
-- `magpie-video-capture`
-- `magpie-video-viewer`
-- `magpie-audio-player`
-
-
-## Video Streamer
-
-Capture frames from an OpenCV camera and publish them over ZeroMQ.
+### `magpie-publish` — Publish a message to a topic
 
 ```bash
-magpie-video-capture tcp://*:5555 /camera --camera 0 --encoder jpeg
+# Publish a dict payload once
+magpie-publish tcp://127.0.0.1:5555 /mytopic '{"name": "Bob", "value": 42}'
+
+# Publish at 10 Hz continuously
+magpie-publish tcp://127.0.0.1:5555 /mytopic '{"x": 1}' --rate 10 --loop
+
+# Publish a plain string (no DictFrame wrapping)
+magpie-publish tcp://127.0.0.1:5555 /events "hello world" --raw
+
+# Load payload from a JSON file
+magpie-publish tcp://127.0.0.1:5555 /mytopic @payload.json --rate 5 --count 20
+
+# Bind the socket (publisher listens, subscribers connect)
+magpie-publish tcp://*:5555 /mytopic '{"status": "ok"}' --bind
 ```
 
-## Video Stream Viewer
+### `magpie-subscribe` — Subscribe to a topic and print messages
 
-Subscribe to a MAGPIE video stream and display it.
+```bash
+# Subscribe to a single topic
+magpie-subscribe tcp://127.0.0.1:5555 /mytopic
+
+# Subscribe to multiple topics
+magpie-subscribe tcp://127.0.0.1:5555 /topic1 /topic2
+
+# Pretty-print JSON output
+magpie-subscribe tcp://127.0.0.1:5555 /mytopic --pretty
+
+# Bind the subscriber socket (publisher connects to it)
+magpie-subscribe tcp://*:5555 /mytopic --bind
+```
+
+### `magpie-request` — Send an RPC request and print the response
+
+```bash
+# Send a request with a JSON payload
+magpie-request tcp://127.0.0.1:5556 '{"action": "greet", "name": "Bob"}'
+
+# Send from a JSON file with a 5 s timeout
+magpie-request tcp://127.0.0.1:5556 @request.json --timeout 5.0
+
+# Pretty-print the response
+magpie-request tcp://127.0.0.1:5556 '{"query": "status"}' --pretty
+```
+
+### `magpie-video-capture` — Capture camera frames and stream over ZMQ
+
+```bash
+# Stream camera 0 in JPEG at 30 fps, binding on port 5555
+magpie-video-capture tcp://*:5555 /camera --encoder jpeg
+
+# Stream at 720p, 15 fps, connect to an existing subscriber
+magpie-video-capture tcp://127.0.0.1:5555 /camera --size 1280 720 --framerate 15
+```
+
+### `magpie-video-viewer` — View a MAGPIE video stream
 
 ```bash
 magpie-video-viewer tcp://127.0.0.1:5555 /camera
 ```
 
-## Audio Stream Player
-
-Receive and play audio frames in real time.
+### `magpie-audio-capture` — Capture microphone audio and stream over ZMQ
 
 ```bash
-magpie-audio-player tcp://127.0.0.1:5555 /audio
+# Stream at 16 kHz mono PCM (default)
+magpie-audio-capture tcp://*:5556 /audio
+
+# Stream at 48 kHz stereo, FLAC-compressed
+magpie-audio-capture tcp://*:5556 /audio --samplerate 48000 --channels 2 --encoder flac
+
+# Connect to a listening subscriber instead of binding
+magpie-audio-capture tcp://127.0.0.1:5556 /audio
 ```
 
---- 
+### `magpie-audio-player` — Receive and play a MAGPIE audio stream
 
-## Architecture Overview
+```bash
+magpie-audio-player tcp://127.0.0.1:5556 /audio
+```
 
-MAGPIE is organized into a few key modules:
+### `magpie-discovery` — Discover or advertise nodes on the local network
 
-### Transports (`magpie.transport.*`)
+```bash
+# Scan for nodes continuously (updates on change)
+magpie-discovery
 
-- **ZeroMQ-based** transport:
-  - `zmq_publisher.py`, `zmq_subscriber.py`
-  - `zmq_rpc_requester.py`, `zmq_rpc_responder.py`
+# Scan once and exit, with pretty output
+magpie-discovery --once --pretty
 
-The transport layer is **pluggable**: you can add new transports (e.g. WebRTC, MQTT) without changing user-facing code.
+# Advertise a node on port 5555
+magpie-discovery --advertise --port 5555
 
-### Serialization (`magpie.serializer.*`)
-
-- `base_serializer.py` – abstract serializer interface
-- `msgpack_serializer.py` – msgpack implementation
-
-The default serializer is msgpack, but you can implement your own `BaseSerializer` if needed.
-
-### Nodes (`magpie.nodes.*`)
-
-Helper classes for building **long-running processes** and **streaming nodes**:
-
-- `BaseNode` – common functionality (logging, main loop, etc.)
-- `ProcessNode` – bidirectional process helpers
-- `ServerNode` – RPC-style server helpers
-- `SourceNode`, `SinkNode` – stream producers/consumers
-
-These abstractions make it easier to build robust services that connect via MAGPIE streams and RPC.
-
-### Frames (`magpie.frames.*`)
-
-Typed data containers for structured payloads:
-
-- `Frame` – base class
-- `ImageFrameJpeg`, `ImageFrameCV` – image-specific frames
-- `AudioFrameRaw`, `AudioFrameFlac` – audio-specific frames
-
-Heavy dependencies (e.g. NumPy, OpenCV, soundfile) are **only imported when needed**, and can be installed via the optional extras.
+# Advertise with a custom ID and metadata
+magpie-discovery --advertise --port 5555 --id MY_ROBOT --payload '{"role": "robot", "model": "QTrobot"}'
+```
 
 ---
 
 ## Used in QTrobot
 
-MAGPIE is used internally at **LuxAI** as part of the QTrobot ecosystem, for example:
-
-- Bridging transport layers
-- Implementing distributed components and SDKs for QTrobot
-- Audio and video streaming between robot components
-
-While MAGPIE is generic and not limited to robotics, its design is influenced by production use in embedded and robotics environments.
+MAGPIE powers the internal messaging infrastructure of [QTrobot](https://luxai.com/qtrobot-for-research/) at **LuxAI**, handling audio/video streaming, distributed components, and SDK communication between robot subsystems.
 
 ---
 
-## Project status & roadmap
+## Project Status
 
-- **Status:** Beta
-  - Actively used in production-like systems
-  - APIs are mostly stable, but minor changes are still possible
+**Status:** Beta — actively used in production-like systems. APIs are mostly stable; minor changes are still possible.
 
-- **Planned / potential enhancements:**
-  - Additional transports (e.g. MQTT, WebRTC)
-  - More serializers
-  - Higher-level pipelines for AI workloads
-  - Multi trasnport support
+**Roadmap:**
+- Additional transports (MQTT, WebRTC)
+- Multi-transport support
+- Higher-level pipeline abstractions for AI workloads
 
 ---
 
-<!-- ## Contributing
-
-Contributions are welcome! If you'd like to contribute:
-
-1. Open an issue to discuss your idea or bug.
-2. Keep changes focused and small where possible.
-3. Add tests or simple examples when introducing new features. -->
-
----
 ## License
 
-This project is licensed under the *GNU General Public License v3 (GPLv3)* Licens. See the `LICENSE` file for details.
+Licensed under the [GNU General Public License v3 (GPLv3)](LICENSE).

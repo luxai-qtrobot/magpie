@@ -89,12 +89,18 @@ def main():
                         help="show verbose information on video viewer",
                         action="store_true")
     
+    parser.add_argument(
+        "--bind",
+        action="store_true",
+        help="Bind the subscriber socket instead of connecting (default: connect).",
+    )
+
     args = parser.parse_args()
-    node = ZmqVideoViewer(name='MagpieVideoViewer', 
+    node = ZmqVideoViewer(name='MagpieVideoViewer',
                           stream_reader=ZMQSubscriber(
                           endpoint=args.endpoint,
                           topic=args.topic,
-                          bind=False,
+                          bind=args.bind,
                           queue_size=1,                           
                           delivery="latest"),
                           setup_kwargs={'show_statistics': args.verbose})

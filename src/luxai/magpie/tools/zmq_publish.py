@@ -11,12 +11,14 @@ from luxai.magpie.transport.zmq.zmq_publisher import ZMQPublisher
 from luxai.magpie.frames import DictFrame
 
 
-def _parse_payload(raw: str) -> Dict[str, Any]:
+def _parse_payload(raw: str) -> Any:
     """
     Parse payload input. Supports:
-      - Python-literal dict (PowerShell-friendly): "{'name':'Bob'}"
-      - JSON object string: '{"name":"Bob"}'
+      - Any JSON/Python literal: string, number, list, dict
+      - Python-literal (PowerShell-friendly): "{'name':'Bob'}" or "'hello'"
+      - JSON string: '{"name":"Bob"}' or '"hello"'
       - JSON file: '@payload.json'
+      - Plain string fallback (when --raw is used)
     """
     raw = raw.strip()
 
@@ -35,43 +37,40 @@ def _parse_payload(raw: str) -> Dict[str, Any]:
         except Exception:
             try:
                 data = json.loads(raw)
-            except json.JSONDecodeError as e:
-                raise argparse.ArgumentTypeError(
-                    f"invalid payload. Use JSON like '{{\"name\":\"Bob\"}}' "
-                    f"or a Python dict literal like \"{{'name':'Bob'}}\" "
-                    f"or @file.json. Error: {e}"
-                )
-
-    if not isinstance(data, dict):
-        raise argparse.ArgumentTypeError("payload must be a dict/object.")
+            except json.JSONDecodeError:
+                data = raw  # treat as plain string
 
     return data
 
 
 class MagpiePublisher(SourceNode):
 
-    def setup(self, topic: str, data: Dict[str, Any],
+    def setup(self, topic: str, data: Any,
               rate: Optional[float] = None,
               count: Optional[int] = None,
-              loop: bool = False):
+              loop: bool = False,
+              raw: bool = False):
         self.topic = topic
         self.data = data
         self.rate = rate          # Hz, or None for single-shot
         self.count = count        # max messages, or None
         self.loop = loop          # publish forever
+        self.raw = raw            # publish as-is, skip DictFrame wrapping
         self._published = 0
         self._write_time = None
 
         Logger.info(f"{self.name}: topic={self.topic} rate={self.rate}Hz "
-                    f"count={self.count} loop={self.loop}")
+                    f"count={self.count} loop={self.loop} raw={self.raw}")
 
     def process(self):
         self._write_time = time.time()
 
+        payload = self.data if self.raw else DictFrame(value=self.data).to_dict()
+
         # Single-shot: publish once then just idle (socket stays alive until Ctrl+C)
         if self.rate is None:
             if self._published == 0:
-                self.stream_writer.write(DictFrame(value=self.data).to_dict(), topic=self.topic)
+                self.stream_writer.write(payload, topic=self.topic)
                 self._published += 1
                 Logger.info(f"{self.name}: published 1 message")
             else:
@@ -81,7 +80,7 @@ class MagpiePublisher(SourceNode):
 
         # Rate mode: publish then sleep to maintain rate
         if self.count is None or self._published < self.count:
-            self.stream_writer.write(DictFrame(value=self.data).to_dict(), topic=self.topic)
+            self.stream_writer.write(payload, topic=self.topic)
             self._published += 1
 
             if self.count is not None and self._published >= self.count:
@@ -118,7 +117,7 @@ def main():
     parser.add_argument(
         "data",
         type=_parse_payload,
-        help="Payload as JSON/Python dict literal, or @file.json",
+        help="Payload as any JSON/Python literal or @file.json. Must be a dict unless --raw is set.",
     )
     parser.add_argument(
         "--rate",
@@ -136,6 +135,11 @@ def main():
         "--loop",
         action="store_true",
         help="Publish forever (requires --rate).",
+    )
+    parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="Publish payload as-is without wrapping in DictFrame. Allows any type, not just dict.",
     )
     parser.add_argument(
         "--bind",
@@ -156,9 +160,12 @@ def main():
     )
 
     args = parser.parse_args()
+    
+    Logger.set_level("DEBUG" if args.verbose else "INFO")
 
-    Logger.set_level("INFO" if args.verbose else "WARN")
-
+    if not args.raw and not isinstance(args.data, dict):
+        Logger.error("magpie-publish: payload must be a dict when not using --raw")
+        return 2
     if args.rate is not None and args.rate <= 0:
         Logger.error("magpie-publish: --rate must be > 0")
         return 2
@@ -181,6 +188,7 @@ def main():
             "rate": args.rate,
             "count": args.count,
             "loop": args.loop,
+            "raw": args.raw,
         },
     )
 
