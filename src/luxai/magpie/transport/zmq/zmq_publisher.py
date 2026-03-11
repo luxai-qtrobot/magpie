@@ -1,4 +1,3 @@
-
 from luxai.magpie.transport.stream_writer import StreamWriter
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.serializer.msgpack_serializer import MsgpackSerializer
@@ -91,6 +90,16 @@ class ZMQPublisher(StreamWriter):
         """
         Logger.debug(f"{self.name} is closing.")
 
+        # Must close monitor BEFORE closing the socket, otherwise context.term() blocks
+        if self._monitor is not None:
+            try:
+                self.socket.disable_monitor()
+                self._monitor.close(linger=0)
+            except Exception as e:
+                Logger.warning(f"{self.name} monitor close error: {e}")
+            finally:
+                self._monitor = None
+
         try:
             self.socket.close(linger=0)
         except Exception as e:
@@ -123,7 +132,11 @@ class ZMQPublisher(StreamWriter):
                 except zmq.Again:
                     continue
         finally:
-            self.socket.disable_monitor()
+            try:
+                self.socket.disable_monitor()
+                self._monitor.close(linger=0)
+            except Exception:
+                pass
             self._monitor = None
 
         return connected
