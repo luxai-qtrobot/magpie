@@ -1,7 +1,5 @@
 import argparse
 import json
-import sys
-import ast
 from typing import Any, Dict, Optional
 
 from luxai.magpie.transport import ZMQRpcRequester
@@ -38,8 +36,8 @@ def _parse_args_value(raw: str) -> Dict[str, Any]:
                 data = json.loads(raw)
             except json.JSONDecodeError as e:
                 raise argparse.ArgumentTypeError(
-                    f"invalid args. Use JSON like '{{\"uri\":\"file:///x.mp3\"}}' "
-                    f"or a Python dict literal like \"{{'uri':'file:///x.mp3'}}\". "
+                    f"invalid payload. Use JSON like '{{\"name\":\"/foo\",\"args\":{{}}}}' "
+                    f"or a Python dict literal like \"{{'name':'/foo','args':{{}}}}\". "
                     f"Error: {e}"
                 )
 
@@ -62,14 +60,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="socket endpoint (e.g. tcp://127.0.0.1:5555)",
     )
     p.add_argument(
-        "name",
-        type=str,
-        help="RPC name (e.g. /media/audio/bg/file/play)",
-    )
-    p.add_argument(
-        "args",
+        "payload",
+        nargs="?",
         type=_parse_args_value,
-        help='RPC args as JSON object string, or @file.json (e.g. \'{"uri":"file:///x.mp3"}\' or @payload.json)',
+        default={},
+        help='payload as JSON object string, or @file.json (e.g. \'{"name":"/media/play","args":{}}\' or @payload.json). Defaults to empty dict.',
     )
     p.add_argument(
         "--timeout",
@@ -104,12 +99,7 @@ def main() -> int:
     try:
         client = ZMQRpcRequester(ns.endpoint)
 
-        payload = {
-            "name": ns.name,
-            "args": ns.args,
-        }
-
-        ret = client.call(payload, timeout=ns.timeout)
+        ret = client.call(ns.payload, timeout=ns.timeout)
 
         if ns.pretty:
             print(json.dumps(ret, indent=2, ensure_ascii=False))

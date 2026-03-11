@@ -52,7 +52,11 @@ class ZMQPublisher(StreamWriter):
         if bind:
             self.socket.bind(endpoint)
             action = "bound"
+            self._monitor = None
         else:
+            # Attach monitor BEFORE connect so EVENT_CONNECTED is never missed
+            self._monitor = self.socket.get_monitor_socket()
+            self._monitor.setsockopt(zmq.RCVTIMEO, 100)
             self.socket.connect(endpoint)
             action = "connected"
 
@@ -100,11 +104,9 @@ class ZMQPublisher(StreamWriter):
             Logger.warning(f"{self.name} context close error: {e}")
 
     def wait_connect(self, timeout: float = None) -> bool:
-        if self.bind:
+        if self.bind or self._monitor is None:
             return True
 
-        monitor = self.socket.get_monitor_socket()
-        monitor.setsockopt(zmq.RCVTIMEO, 100)  # poll every 100ms
         connected = False
         start_t = time.time()
         try:
@@ -113,14 +115,15 @@ class ZMQPublisher(StreamWriter):
                     Logger.debug(f"ZMQPublisher: wait_connect timed out after {timeout}s (endpoint={self.endpoint})")
                     break
                 try:
-                    evt = zmq.utils.monitor.recv_monitor_message(monitor)
+                    evt = zmq.utils.monitor.recv_monitor_message(self._monitor)
                     if evt['event'] == zmq.EVENT_CONNECTED:
                         connected = True
-                        time.sleep(0.1)  # small delay to ensure connection is fully established                        
+                        time.sleep(0.1)  # small delay to ensure connection is fully established
                         break
                 except zmq.Again:
                     continue
         finally:
             self.socket.disable_monitor()
+            self._monitor = None
 
         return connected

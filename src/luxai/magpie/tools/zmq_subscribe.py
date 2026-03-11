@@ -63,11 +63,13 @@ class ZmqSubscribe(SinkNode):
                 self.last_stats_print = now
         else:
             # Print payload
-            if self.pretty:
-                print(json.dumps(data, indent=2, ensure_ascii=False))
-            else:
-                print(json.dumps(data, separators=(",", ":"), ensure_ascii=False))
-
+            try:
+                if self.pretty:
+                    print(json.dumps(data, indent=2, ensure_ascii=False))
+                else:
+                    print(json.dumps(data, separators=(",", ":"), ensure_ascii=False))
+            except (TypeError, ValueError):
+                print(data)
 
         # Exit if once
         if self.once:
@@ -127,6 +129,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p.add_argument(
+        "--bind",
+        action="store_true",
+        help="Bind the subscriber socket instead of connecting (default: connect).",
+    )
+    p.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -147,7 +154,7 @@ def main():
         stream_reader=ZMQSubscriber(
             endpoint=ns.endpoint,
             topic=ns.topic,
-            bind=False,
+            bind=ns.bind,
         ),
         setup_kwargs={
             "pretty": ns.pretty,

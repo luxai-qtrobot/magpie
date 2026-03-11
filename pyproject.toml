@@ -13,11 +13,27 @@ authors = [
 ]
 keywords = ["messaging", "rpc", "pubsub", "zeromq", "distributed-systems", "robotics", "middleware"]
 classifiers = [
-    "Development Status :: 4 - Beta", 
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",   
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+    "Topic :: System :: Networking",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Operating System :: OS Independent",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
 ]
 # Important: version is dynamic
 dynamic = ["version"]
@@ -57,6 +73,7 @@ full = [
     "numpy",
     "opencv-python",
     "simplejpeg",
+    "sounddevice",
     "soundfile",
     "zeroconf"
 ]
@@ -67,6 +84,7 @@ cli = [
     "opencv-python",
     "simplejpeg",
     "soundfile",
+    "zeroconf",
 ]
 
 
@@ -84,6 +102,7 @@ magpie-video-capture = "luxai.magpie.tools.zmq_video_capture:main"
 magpie-request = "luxai.magpie.tools.zmq_request:main"
 magpie-subscribe = "luxai.magpie.tools.zmq_subscribe:main"
 magpie-publish = "luxai.magpie.tools.zmq_publish:main"
+magpie-discovery = "luxai.magpie.tools.zconf_discovery:main"
 
 # -----------------------------
 # setuptools configuration

@@ -191,13 +191,19 @@ def main():
         action="store_true",
     )
 
+    parser.add_argument(
+        "--bind",
+        action="store_true",
+        help="Bind the subscriber socket instead of connecting (default: connect).",
+    )
+
     args = parser.parse_args()
 
     node = ZmqAudioPlayer(
         name='MagpieAudioPlayer',
         stream_reader=ZMQSubscriber(endpoint=args.endpoint,
                                     topic=args.topic,
-                                    bind=False,
+                                    bind=args.bind,
                                     queue_size=1,                                    
                                     delivery="latest"),
                                     setup_kwargs={
