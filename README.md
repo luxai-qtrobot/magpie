@@ -22,7 +22,7 @@
 
 ---
 
-MAGPIE is a lightweight, modular messaging engine for distributed Python systems. It provides a clean abstraction over pub/sub streams, request/response RPC, and network discovery — built on top of ZeroMQ and msgpack, with a pluggable transport layer.
+MAGPIE is a lightweight, modular messaging engine for distributed Python systems. It provides a clean abstraction over pub/sub streams, request/response RPC, and network discovery — built on top of ZeroMQ and MQTT (via Paho), with a pluggable transport layer.
 
 Originally developed at **[LuxAI](https://luxai.com)** for the [QTrobot](https://luxai.com/qtrobot-for-research/) ecosystem, MAGPIE is generic enough for any Python-based distributed or AI pipeline.
 
@@ -32,7 +32,8 @@ Originally developed at **[LuxAI](https://luxai.com)** for the [QTrobot](https:/
 
 - **Pub/Sub streaming** — high-throughput topic-based messaging via `StreamWriter` / `StreamReader`
 - **Request/Response RPC** — synchronous and async-friendly RPC via `ZMQRpcRequester` / `ZMQRpcResponder`
-- **Pluggable transports** — ZeroMQ today; add MQTT, WebRTC, or any custom transport without changing user code
+- **MQTT transport** — full pub/sub and RPC over MQTT with a shared connection; supports `mqtt://`, `mqtts://`, `ws://`, `wss://`, TLS, auth, LWT, and auto-reconnect
+- **Pluggable transports** — ZeroMQ and MQTT today; add WebRTC or any custom transport without changing user code
 - **Fast serialization** — msgpack by default; bring your own serializer via the abstract interface
 - **Typed frames** — `ImageFrameJpeg`, `ImageFrameCV`, `AudioFrameRaw`, `AudioFrameFlac`, and more
 - **Node helpers** — base classes (`SourceNode`, `SinkNode`, `ServerNode`, …) to build robust streaming services
@@ -54,6 +55,7 @@ pip install luxai-magpie
 
 | Extra | What it adds |
 |---|---|
+| `pip install "luxai-magpie[mqtt]"` | MQTT transport (paho-mqtt) |
 | `pip install "luxai-magpie[video]"` | Image frames (OpenCV, simplejpeg) |
 | `pip install "luxai-magpie[audio]"` | Audio frames (soundfile) |
 | `pip install "luxai-magpie[discovery]"` | Network discovery (zeroconf) |
@@ -143,6 +145,127 @@ while True:
     except KeyboardInterrupt:
         server.close()
         break
+```
+
+### MQTT Pub/Sub
+
+MQTT transport uses a **shared connection** object — create it once and pass it to any number of publishers or subscribers.  All four URI schemes are supported out of the box.
+
+**Publisher:**
+
+```python
+from luxai.magpie.transport import MqttConnection, MqttPublisher
+
+conn = MqttConnection("mqtt://broker.hivemq.com:1883")   # or mqtts://, ws://, wss://
+conn.connect()
+
+pub = MqttPublisher(conn)
+pub.write({"sensor": "temp", "value": 22.5}, topic="sensors/temperature")
+
+pub.close()
+conn.disconnect()
+```
+
+**Subscriber:**
+
+```python
+from luxai.magpie.transport import MqttConnection, MqttSubscriber
+
+conn = MqttConnection("mqtt://broker.hivemq.com:1883")
+conn.connect()
+
+sub = MqttSubscriber(conn, topic="sensors/temperature")  # wildcards + and # supported
+while True:
+    try:
+        data, topic = sub.read(timeout=5.0)
+        print(f"{topic}: {data}")
+    except KeyboardInterrupt:
+        sub.close()
+        break
+
+conn.disconnect()
+```
+
+### MQTT Request / Response RPC
+
+**Requester:**
+
+```python
+from luxai.magpie.transport import MqttConnection, MqttRpcRequester
+
+conn = MqttConnection("mqtt://broker.hivemq.com:1883")
+conn.connect()
+
+client = MqttRpcRequester(conn, service_name="myrobot/motion")
+try:
+    response = client.call({"action": "move", "x": 1.0}, timeout=5.0)
+    print("Response:", response)
+except TimeoutError:
+    print("Request timed out")
+finally:
+    client.close()
+    conn.disconnect()
+```
+
+**Responder:**
+
+```python
+from luxai.magpie.transport import MqttConnection, MqttRpcResponder
+
+conn = MqttConnection("mqtt://broker.hivemq.com:1883")
+conn.connect()
+
+def handle(request):
+    print("Got request:", request)
+    return {"status": "ok", "echo": request}
+
+server = MqttRpcResponder(conn, service_name="myrobot/motion")
+while True:
+    try:
+        server.handle_once(handler=handle, timeout=1.0)
+    except TimeoutError:
+        pass
+    except KeyboardInterrupt:
+        server.close()
+        break
+
+conn.disconnect()
+```
+
+### MQTT Advanced Options
+
+```python
+from luxai.magpie.transport import (
+    MqttConnection, MqttOptions,
+    MqttAuthOptions, MqttTlsOptions, MqttWillOptions, MqttDefaultsOptions,
+)
+
+conn = MqttConnection(
+    "wss://broker.example.com:8884/mqtt",
+    client_id="robot-01",
+    protocol_version=5,
+    keepalive=60,
+    options=MqttOptions(
+        auth=MqttAuthOptions(
+            mode="username_password",
+            username="robot-01",
+            password="secret",
+        ),
+        tls=MqttTlsOptions(
+            ca_file="/etc/ssl/certs/ca.pem",
+            verify_peer=True,
+        ),
+        will=MqttWillOptions(
+            enabled=True,
+            topic="robots/robot-01/status",
+            payload="offline",
+            qos=1,
+            retain=True,
+        ),
+        defaults=MqttDefaultsOptions(publish_qos=1, subscribe_qos=1),
+    ),
+)
+conn.connect()
 ```
 
 ### Network Discovery
@@ -285,8 +408,8 @@ MAGPIE powers the internal messaging infrastructure of [QTrobot](https://luxai.c
 **Status:** Beta — actively used in production-like systems. APIs are mostly stable; minor changes are still possible.
 
 **Roadmap:**
-- Additional transports (MQTT, WebRTC)
-- Multi-transport support
+- Additional transports (WebRTC)
+- Multi-transport support (route the same stream over ZMQ and MQTT simultaneously)
 - Higher-level pipeline abstractions for AI workloads
 
 ---
