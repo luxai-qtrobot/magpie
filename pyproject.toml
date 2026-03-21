@@ -56,6 +56,10 @@ audio = [
     "soundfile",
 ]
 
+mqtt = [
+    "paho-mqtt>=1.6.0",
+]
+
 discovery = [
     "zeroconf"
 ]
@@ -65,6 +69,7 @@ dev = [
     "opencv-python",
     "simplejpeg",
     "soundfile",
+    "paho-mqtt>=1.6.0",
     "pytest",
     "coverage"
 ]
@@ -75,7 +80,8 @@ full = [
     "simplejpeg",
     "sounddevice",
     "soundfile",
-    "zeroconf"
+    "zeroconf",
+    "paho-mqtt>=1.6.0",
 ]
 
 cli = [
