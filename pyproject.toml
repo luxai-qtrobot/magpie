@@ -109,6 +109,9 @@ magpie-request = "luxai.magpie.tools.zmq_request:main"
 magpie-subscribe = "luxai.magpie.tools.zmq_subscribe:main"
 magpie-publish = "luxai.magpie.tools.zmq_publish:main"
 magpie-discovery = "luxai.magpie.tools.zconf_discovery:main"
+magpie-publish-mqtt = "luxai.magpie.tools.mqtt_publish:main"
+magpie-subscribe-mqtt = "luxai.magpie.tools.mqtt_subscribe:main"
+magpie-request-mqtt = "luxai.magpie.tools.mqtt_request:main"
 
 # -----------------------------
 # setuptools configuration

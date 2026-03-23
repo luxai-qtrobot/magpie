@@ -16,7 +16,7 @@ from luxai.magpie.utils import Logger
 
 
 BROKER_URI   = "mqtt://broker.hivemq.com:1883"
-SERVICE_NAME = "magpie/examples/rpc"
+SERVICE_NAME = "magpie/examples"
 
 
 if __name__ == "__main__":
