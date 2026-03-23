@@ -38,7 +38,7 @@ Originally developed at **[LuxAI](https://luxai.com)** for the [QTrobot](https:/
 - **Typed frames** — `ImageFrameJpeg`, `ImageFrameCV`, `AudioFrameRaw`, `AudioFrameFlac`, and more
 - **Node helpers** — base classes (`SourceNode`, `SinkNode`, `ServerNode`, …) to build robust streaming services
 - **Network discovery** — mDNS/Zeroconf node advertisement and scanning via `ZconfDiscovery`
-- **CLI tools** — ready-to-use command-line tools for publishing, subscribing, RPC, video/audio streaming, and discovery
+- **CLI tools** — ready-to-use command-line tools for publishing, subscribing, RPC over both ZMQ and MQTT, video/audio streaming, and discovery
 - **Lightweight core** — heavy media dependencies (NumPy, OpenCV, soundfile) are fully opt-in
 
 ---
@@ -59,7 +59,8 @@ pip install luxai-magpie
 | `pip install "luxai-magpie[video]"` | Image frames (OpenCV, simplejpeg) |
 | `pip install "luxai-magpie[audio]"` | Audio frames (soundfile) |
 | `pip install "luxai-magpie[discovery]"` | Network discovery (zeroconf) |
-| `pip install "luxai-magpie[cli]"` | All CLI tools (video, audio, discovery) |
+| `pip install "luxai-magpie[cli]"` | All ZMQ CLI tools (video, audio, discovery) |
+| `pip install "luxai-magpie[cli,mqtt]"` | ZMQ CLI tools + MQTT CLI tools |
 | `pip install "luxai-magpie[full]"` | Everything above |
 
 ---
@@ -288,7 +289,7 @@ with ZconfDiscovery() as disc:
 
 ---
 
-## Command-Line Tools
+## ZMQ Command-Line Tools
 
 Install with:
 
@@ -394,6 +395,126 @@ magpie-discovery --advertise --port 5555
 # Advertise with a custom ID and metadata
 magpie-discovery --advertise --port 5555 --id MY_ROBOT --payload '{"role": "robot", "model": "QTrobot"}'
 ```
+
+---
+
+## MQTT Command-Line Tools
+
+Install with:
+
+```bash
+pip install "luxai-magpie[cli,mqtt]"
+```
+
+The MQTT tools mirror their ZMQ counterparts but target an MQTT broker instead of a ZMQ endpoint. The broker URI is a required positional argument. Advanced connection options (QoS, authentication, TLS, …) are loaded from a JSON file via `--mqtt-params @myparams.json`.
+
+### `magpie-publish-mqtt` — Publish a message to an MQTT topic
+
+```bash
+# Publish a dict payload once
+magpie-publish-mqtt mqtt://broker.hivemq.com:1883 /magpie/test "{'data': 'hello'}"
+
+# Publish at 5 Hz continuously
+magpie-publish-mqtt mqtt://broker.hivemq.com:1883 /magpie/test "{'x': 1}" --rate 5 --loop
+
+# Publish a fixed number of messages
+magpie-publish-mqtt mqtt://broker.hivemq.com:1883 /magpie/test "{'x': 1}" --rate 10 --count 20
+
+# Publish a plain value without DictFrame wrapping
+magpie-publish-mqtt mqtt://broker.hivemq.com:1883 /magpie/events "hello world" --raw
+
+# Load payload from a JSON file
+magpie-publish-mqtt mqtt://broker.hivemq.com:1883 /magpie/test @payload.json --rate 5
+
+# Set the MQTT retain flag
+magpie-publish-mqtt mqtt://broker.hivemq.com:1883 /magpie/status "{'state': 'ready'}" --retain
+
+# Connect to a password-protected broker with custom QoS
+magpie-publish-mqtt mqtt://broker.example.com:1883 /magpie/test "{'x': 1}" --mqtt-params @myparams.json
+```
+
+### `magpie-subscribe-mqtt` — Subscribe to an MQTT topic and print messages
+
+```bash
+# Subscribe to a topic
+magpie-subscribe-mqtt mqtt://broker.hivemq.com:1883 /magpie/test
+
+# Subscribe with MQTT wildcard patterns
+magpie-subscribe-mqtt mqtt://broker.hivemq.com:1883 "/magpie/+"
+
+# Pretty-print JSON output
+magpie-subscribe-mqtt mqtt://broker.hivemq.com:1883 /magpie/test --pretty
+
+# Receive one message and exit
+magpie-subscribe-mqtt mqtt://broker.hivemq.com:1883 /magpie/test --once --pretty
+
+# Show message frequency
+magpie-subscribe-mqtt mqtt://broker.hivemq.com:1883 /magpie/test --hz
+
+# Connect with authentication and TLS
+magpie-subscribe-mqtt mqtts://broker.example.com:8883 /magpie/test --mqtt-params @myparams.json
+```
+
+### `magpie-request-mqtt` — Send an MQTT RPC request and print the response
+
+```bash
+# Send a request to a service
+magpie-request-mqtt mqtt://broker.hivemq.com:1883 myrobot/motion "{'action': 'move', 'x': 1.0}"
+
+# Load request payload from a JSON file
+magpie-request-mqtt mqtt://broker.hivemq.com:1883 myrobot/motion @request.json
+
+# Set call and ACK timeouts
+magpie-request-mqtt mqtt://broker.hivemq.com:1883 myrobot/motion "{'action': 'status'}" --timeout 10 --ack-timeout 3
+
+# Pretty-print the response
+magpie-request-mqtt mqtt://broker.hivemq.com:1883 myrobot/motion "{'query': 'status'}" --pretty
+
+# Connect with advanced params
+magpie-request-mqtt mqtts://broker.example.com:8883 myrobot/motion "{'action': 'stop'}" --mqtt-params @myparams.json
+```
+
+### `--mqtt-params` JSON reference
+
+Pass advanced broker connection options via `--mqtt-params @myparams.json`:
+
+```json
+{
+  "defaults": {
+    "publish_qos":    1,
+    "subscribe_qos":  1,
+    "publish_retain": false
+  },
+  "auth": {
+    "mode":     "username_password",
+    "username": "robot",
+    "password": "secret"
+  },
+  "tls": {
+    "ca_file":         "/etc/ssl/certs/ca.pem",
+    "cert_file":       "/etc/ssl/certs/client.crt",
+    "key_file":        "/etc/ssl/private/client.key",
+    "verify_peer":     true,
+    "verify_hostname": true
+  },
+  "reconnect": {
+    "min_delay_sec": 1.0,
+    "max_delay_sec": 30.0
+  },
+  "session": {
+    "clean_start": true
+  },
+  "will": {
+    "enabled": false,
+    "topic":   "robot/status",
+    "payload": "offline",
+    "qos":     1,
+    "retain":  true
+  }
+}
+```
+
+All sections are optional — omit any section to keep its default value.
 
 ---
 
