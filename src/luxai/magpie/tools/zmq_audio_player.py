@@ -4,13 +4,16 @@ import time
 from time import perf_counter
 from collections import deque
 
-import numpy as np
-
 try:
+    import numpy as np
     import sounddevice as sd
-except ImportError as e:
-    Logger.error(f"Could not import sounddevice. Please install it using 'pip install sounddevice'.")
-    sys.exit()
+except ImportError:
+    from luxai.magpie.utils import Logger
+    Logger.error(
+        "Could not import required audio dependencies. Please install with:\n"
+        "  pip install \"luxai-magpie[audio]\""
+    )
+    sys.exit(1)
 
 from luxai.magpie.utils import Logger
 from luxai.magpie.nodes import SinkNode

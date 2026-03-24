@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import sys
 import time
 from collections import deque
 from time import perf_counter
+
+try:
+    import paho.mqtt  # noqa: F401
+except ImportError:
+    from luxai.magpie.utils import Logger
+    Logger.error(
+        "Could not import paho-mqtt. Please install it with:\n"
+        "  pip install \"luxai-magpie[mqtt]\"\n"
+        "  or: pip install paho-mqtt"
+    )
+    sys.exit(1)
 
 from luxai.magpie.utils import Logger
 from luxai.magpie.nodes import SinkNode

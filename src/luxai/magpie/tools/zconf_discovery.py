@@ -9,6 +9,15 @@ import time
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.utils.common import get_uinque_id
 
+try:
+    import zeroconf  # noqa: F401
+except ImportError:
+    Logger.error(
+        "Could not import zeroconf. Please install with:\n"
+        "  pip install \"luxai-magpie[discovery]\""
+    )
+    sys.exit(1)
+
 
 def _parse_payload(raw: str):
     try:

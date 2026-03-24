@@ -55,13 +55,13 @@ pip install luxai-magpie
 
 | Extra | What it adds |
 |---|---|
-| `pip install "luxai-magpie[mqtt]"` | MQTT transport (paho-mqtt) |
-| `pip install "luxai-magpie[video]"` | Image frames (OpenCV, simplejpeg) |
-| `pip install "luxai-magpie[audio]"` | Audio frames (soundfile) |
-| `pip install "luxai-magpie[discovery]"` | Network discovery (zeroconf) |
-| `pip install "luxai-magpie[cli]"` | All ZMQ CLI tools (video, audio, discovery) |
-| `pip install "luxai-magpie[cli,mqtt]"` | ZMQ CLI tools + MQTT CLI tools |
-| `pip install "luxai-magpie[full]"` | Everything above |
+| `pip install "luxai-magpie[mqtt]"` | MQTT transport + MQTT CLI tools (paho-mqtt) |
+| `pip install "luxai-magpie[audio]"` | Audio frames + capture/player CLI tools (numpy, soundfile, sounddevice) |
+| `pip install "luxai-magpie[video]"` | Image frames + capture/viewer CLI tools (numpy, OpenCV, simplejpeg) |
+| `pip install "luxai-magpie[discovery]"` | `magpie-discovery` CLI tool (zeroconf) |
+| `pip install "luxai-magpie[full]"` | All of the above |
+
+> **Note:** `magpie-publish`, `magpie-subscribe`, and `magpie-request` work with the base install — no extras needed (ZeroMQ is a core dependency). All CLI entry points are always registered; tools that require a missing extra will print a clear install instruction and exit.
 
 ---
 
@@ -291,10 +291,18 @@ with ZconfDiscovery() as disc:
 
 ## ZMQ Command-Line Tools
 
-Install with:
+`magpie-publish`, `magpie-subscribe`, and `magpie-request` work out of the box — no extras needed:
 
 ```bash
-pip install "luxai-magpie[cli]"
+pip install luxai-magpie
+```
+
+Audio/video/discovery tools require their respective extra:
+
+```bash
+pip install "luxai-magpie[audio]"      # magpie-audio-capture, magpie-audio-player
+pip install "luxai-magpie[video]"      # magpie-video-capture, magpie-video-viewer
+pip install "luxai-magpie[discovery]"  # magpie-discovery
 ```
 
 ### `magpie-publish` — Publish a message to a topic

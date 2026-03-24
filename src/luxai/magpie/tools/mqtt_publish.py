@@ -2,8 +2,20 @@
 import argparse
 import ast
 import json
+import sys
 import time
 from typing import Any, Optional
+
+try:
+    import paho.mqtt  # noqa: F401
+except ImportError:
+    from luxai.magpie.utils.logger import Logger
+    Logger.error(
+        "Could not import paho-mqtt. Please install it with:\n"
+        "  pip install \"luxai-magpie[mqtt]\"\n"
+        "  or: pip install paho-mqtt"
+    )
+    sys.exit(1)
 
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.nodes.source_node import SourceNode

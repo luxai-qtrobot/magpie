@@ -2,7 +2,16 @@
 import argparse
 import os, sys
 import time
-import cv2
+
+try:
+    import cv2
+except ImportError:
+    from luxai.magpie.utils.logger import Logger
+    Logger.error(
+        "Could not import required video dependencies. Please install with:\n"
+        "  pip install \"luxai-magpie[video]\""
+    )
+    sys.exit(1)
 
 
 

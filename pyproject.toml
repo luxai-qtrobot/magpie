@@ -54,6 +54,7 @@ video = [
 audio = [
     "numpy",
     "soundfile",
+    "sounddevice",
 ]
 
 mqtt = [
@@ -61,17 +62,19 @@ mqtt = [
 ]
 
 discovery = [
-    "zeroconf"
+    "zeroconf",
 ]
 
 dev = [
     "numpy",
     "opencv-python",
     "simplejpeg",
+    "sounddevice",
     "soundfile",
+    "zeroconf",
     "paho-mqtt>=1.6.0",
     "pytest",
-    "coverage"
+    "coverage",
 ]
 
 full = [
@@ -82,15 +85,6 @@ full = [
     "soundfile",
     "zeroconf",
     "paho-mqtt>=1.6.0",
-]
-
-cli = [
-    "sounddevice",
-    "numpy",
-    "opencv-python",
-    "simplejpeg",
-    "soundfile",
-    "zeroconf",
 ]
 
 
