@@ -1,10 +1,19 @@
 import argparse
 import os, sys
 import time
-import cv2
-import numpy as np
 from time import perf_counter
 from collections import deque
+
+try:
+    import cv2
+    import numpy as np
+except ImportError:
+    from luxai.magpie.utils import Logger
+    Logger.error(
+        "Could not import required video dependencies. Please install with:\n"
+        "  pip install \"luxai-magpie[video]\""
+    )
+    sys.exit(1)
 
 
 

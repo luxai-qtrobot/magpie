@@ -9,20 +9,23 @@ from .zmq.zmq_subscriber import ZMQSubscriber
 from .zmq.zmq_rpc_requester import ZMQRpcRequester
 from .zmq.zmq_rpc_responder import ZMQRpcResponder
 
-from .mqtt.mqtt_options import (
-    MqttOptions,
-    MqttTlsOptions,
-    MqttAuthOptions,
-    MqttSessionOptions,
-    MqttReconnectOptions,
-    MqttWillOptions,
-    MqttDefaultsOptions,
-)
-from .mqtt.mqtt_connection import MqttConnection
-from .mqtt.mqtt_publisher import MqttPublisher
-from .mqtt.mqtt_subscriber import MqttSubscriber
-from .mqtt.mqtt_rpc_requester import MqttRpcRequester
-from .mqtt.mqtt_rpc_responder import MqttRpcResponder
+try:
+    from .mqtt.mqtt_options import (
+        MqttOptions,
+        MqttTlsOptions,
+        MqttAuthOptions,
+        MqttSessionOptions,
+        MqttReconnectOptions,
+        MqttWillOptions,
+        MqttDefaultsOptions,
+    )
+    from .mqtt.mqtt_connection import MqttConnection
+    from .mqtt.mqtt_publisher import MqttPublisher
+    from .mqtt.mqtt_subscriber import MqttSubscriber
+    from .mqtt.mqtt_rpc_requester import MqttRpcRequester
+    from .mqtt.mqtt_rpc_responder import MqttRpcResponder
+except ImportError:
+    pass
 
 __all__ = [
     "StreamReader",
@@ -33,16 +36,23 @@ __all__ = [
     "ZMQSubscriber",
     "ZMQRpcRequester",
     "ZMQRpcResponder",
-    "MqttOptions",
-    "MqttTlsOptions",
-    "MqttAuthOptions",
-    "MqttSessionOptions",
-    "MqttReconnectOptions",
-    "MqttWillOptions",
-    "MqttDefaultsOptions",
-    "MqttConnection",
-    "MqttPublisher",
-    "MqttSubscriber",
-    "MqttRpcRequester",
-    "MqttRpcResponder",
 ]
+
+try:
+    MqttConnection  # noqa: F821
+    __all__ += [
+        "MqttOptions",
+        "MqttTlsOptions",
+        "MqttAuthOptions",
+        "MqttSessionOptions",
+        "MqttReconnectOptions",
+        "MqttWillOptions",
+        "MqttDefaultsOptions",
+        "MqttConnection",
+        "MqttPublisher",
+        "MqttSubscriber",
+        "MqttRpcRequester",
+        "MqttRpcResponder",
+    ]
+except NameError:
+    pass

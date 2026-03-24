@@ -22,18 +22,17 @@ import time
 import queue
 from io import BytesIO
 
-import numpy as np
-
 try:
+    import numpy as np
     import sounddevice as sd
+    import soundfile as sf
 except ImportError:
-    print("Could not import sounddevice. Install it with: pip install sounddevice", file=sys.stderr)
+    from luxai.magpie.utils.logger import Logger
+    Logger.error(
+        "Could not import required audio dependencies. Please install with:\n"
+        "  pip install \"luxai-magpie[audio]\""
+    )
     sys.exit(1)
-
-try:
-    import soundfile as sf  # needed for FLAC encoding
-except ImportError:
-    sf = None  # only required if encoder=flac
 
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.utils.common import get_uinque_id
