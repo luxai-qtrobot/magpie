@@ -8,16 +8,9 @@ from luxai.magpie.utils.logger import Logger
 from luxai.magpie.utils.common import get_uinque_id
 from .mqtt_options import MqttOptions
 
-try:
-    import paho.mqtt.client as mqtt
-    import importlib.metadata as _imeta
-    _PAHO_MAJOR = int(_imeta.version("paho-mqtt").split(".")[0])
-except ImportError:
-    Logger.error(
-        "Could not import paho-mqtt. "
-        "Please install it using 'pip install paho-mqtt' or 'pip install luxai-magpie[mqtt]'."
-    )
-    sys.exit()
+import paho.mqtt.client as mqtt
+import importlib.metadata as _imeta
+_PAHO_MAJOR = int(_imeta.version("paho-mqtt").split(".")[0])
 
 
 # Type alias for the per-message callback registered by subscribers / RPC components.
