@@ -67,7 +67,7 @@ pip install luxai-magpie
 
 ## Supported Platforms
 
-- **Python:** 3.7.3+
+- **Python:** 3.8+
 - **Linux** (x86\_64, ARM, Raspberry Pi, NVIDIA Jetson)
 - **Windows**
 - **macOS**
