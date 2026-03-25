@@ -543,6 +543,16 @@ MAGPIE powers the internal messaging infrastructure of [QTrobot](https://luxai.c
 
 ---
 
+## Related Projects
+
+| Project | Language | Repository |
+|---|---|---|
+| MAGPIE | Python | this repo |
+| MAGPIE C++ | C++ (`libmagpie`, `libmagpie-mqtt`) | [luxai-qtrobot/magpie-cpp](https://github.com/luxai-qtrobot/magpie-cpp) |
+| MAGPIE.js | TypeScript/JavaScript | [luxai-qtrobot/magpie-js](https://github.com/luxai-qtrobot/magpie-js) |
+
+---
+
 ## License
 
 Licensed under the [GNU General Public License v3 (GPLv3)](LICENSE).
