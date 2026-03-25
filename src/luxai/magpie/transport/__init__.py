@@ -56,3 +56,27 @@ try:
     ]
 except NameError:
     pass
+
+try:
+    from .webrtc.webrtc_options import WebRTCOptions, WebRTCTurnServer
+    from .webrtc.webrtc_connection import WebRTCConnection
+    from .webrtc.webrtc_publisher import WebRTCPublisher
+    from .webrtc.webrtc_subscriber import WebRTCSubscriber
+    from .webrtc.webrtc_rpc_requester import WebRTCRpcRequester
+    from .webrtc.webrtc_rpc_responder import WebRTCRpcResponder
+except ImportError:
+    pass
+
+try:
+    WebRTCConnection  # noqa: F821
+    __all__ += [
+        "WebRTCOptions",
+        "WebRTCTurnServer",
+        "WebRTCConnection",
+        "WebRTCPublisher",
+        "WebRTCSubscriber",
+        "WebRTCRpcRequester",
+        "WebRTCRpcResponder",
+    ]
+except NameError:
+    pass
