@@ -24,7 +24,8 @@ except ImportError:
     sys.exit(1)
 
 from luxai.magpie.utils.logger import Logger
-from luxai.magpie.tools._webrtc_tools_common import build_signaler
+from luxai.magpie.tools._webrtc_tools_common import build_signaler, webrtc_options_type, build_webrtc_options
+from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type
 
 
 def main():
@@ -52,6 +53,12 @@ def main():
                         help="Sliding window size for Hz estimation (default: 100).")
     parser.add_argument("--timeout", type=float, default=10.0,
                         help="Signaling connection timeout in seconds, MQTT only (default: 10).")
+    parser.add_argument("--mqtt-params", type=mqtt_params_type, default=None,
+                        metavar="JSON|@FILE",
+                        help="MQTT signaling options (auth, TLS, …) as JSON or @file.json.")
+    parser.add_argument("--webrtc-options", type=webrtc_options_type, default=None,
+                        metavar="JSON|@FILE",
+                        help="WebRTC options (TURN servers, codecs, …) as JSON or @file.json.")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Enable DEBUG logging.")
 
@@ -60,8 +67,10 @@ def main():
 
     signaler = build_signaler(args.signaling, args.session_id,
                               client_id="magpie-webrtc-sub",
-                              timeout=args.timeout, bind=args.bind)
-    conn = WebRTCConnection(signaler=signaler, reconnect=True)
+                              timeout=args.timeout, bind=args.bind,
+                              mqtt_params=args.mqtt_params)
+    conn = WebRTCConnection(signaler=signaler, reconnect=True,
+                            options=build_webrtc_options(args.webrtc_options))
     conn.connect()
 
     sub = WebRTCSubscriber(conn, topic=args.topic)
