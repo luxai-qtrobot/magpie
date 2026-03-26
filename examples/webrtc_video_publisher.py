@@ -12,7 +12,7 @@ Usage (run together with webrtc_video_subscriber.py):
 
 import cv2
 
-from luxai.magpie.frames.image import ImageFrameCV
+from luxai.magpie.frames.image import ImageFrameRaw
 from luxai.magpie.transport import MqttConnection
 from luxai.magpie.transport.webrtc import (
     WebRTCConnection, WebRTCPublisher,
@@ -53,8 +53,11 @@ if __name__ == "__main__":
         try:
             ret, cv_image = cap.read()
             if ret:
-                # ImageFrameCV → routed to the WebRTC video media track
-                frame = ImageFrameCV.from_cv_image(cv_image)
+                h, w, c = cv_image.shape
+                frame = ImageFrameRaw(
+                    data=cv_image.tobytes(), format="raw",
+                    width=w, height=h, channels=c, pixel_format="BGR",
+                )
                 pub.write(frame)
         except KeyboardInterrupt:
             Logger.info("stopping...")

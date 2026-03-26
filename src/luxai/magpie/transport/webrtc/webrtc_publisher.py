@@ -143,6 +143,12 @@ class WebRTCPublisher(StreamWriter):
                 f"format='{frame.format}' to av.VideoFrame"
             )
 
+        if arr.ndim == 3 and arr.shape[2] == 4:
+            raise ValueError(
+                f"WebRTCPublisher: 4-channel frames (RGBA/BGRA) are not supported. "
+                "Convert to 3-channel (RGB/BGR) before publishing."
+            )
+
         # av expects RGB; our frames are typically BGR — convert
         if getattr(frame, "pixel_format", "BGR") == "BGR" and arr.ndim == 3:
             arr = arr[:, :, ::-1].copy()
@@ -160,15 +166,24 @@ class WebRTCPublisher(StreamWriter):
                 f"format='{frame.format}' — only PCM is supported"
             )
 
+        if frame.bit_depth not in (16, 32):
+            raise ValueError(
+                f"WebRTCPublisher: unsupported bit_depth={frame.bit_depth} — only 16 and 32 are supported"
+            )
+
+        if frame.channels > 2:
+            raise ValueError(
+                f"WebRTCPublisher: unsupported channels={frame.channels} — only mono (1) and stereo (2) are supported"
+            )
+
         dtype = np.int16 if frame.bit_depth == 16 else np.int32
         samples = np.frombuffer(frame.data, dtype=dtype)
 
-        if frame.channels > 1:
+        if frame.channels == 2:
             # Interleaved PCM → planar (channels, samples)
-            num_samples = len(samples) // frame.channels
-            samples = samples[: num_samples * frame.channels]
-            samples = samples.reshape(num_samples, frame.channels).T
-            layout = "stereo" if frame.channels == 2 else f"{frame.channels}c"
+            num_samples = len(samples) // 2
+            samples = samples[: num_samples * 2].reshape(num_samples, 2).T
+            layout = "stereo"
             av_fmt = "s16p" if frame.bit_depth == 16 else "s32p"
         else:
             layout = "mono"
