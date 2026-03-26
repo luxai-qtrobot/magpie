@@ -22,7 +22,7 @@
 
 ---
 
-MAGPIE is a lightweight, modular messaging engine for distributed Python systems. It provides a clean abstraction over pub/sub streams, request/response RPC, and network discovery — built on top of ZeroMQ and MQTT (via Paho), with a pluggable transport layer.
+MAGPIE is a lightweight, modular messaging engine for distributed Python systems. It provides a clean abstraction over pub/sub streams, request/response RPC, and network discovery — built on top of ZeroMQ, MQTT (via Paho), and WebRTC (via aiortc), with a pluggable transport layer.
 
 Originally developed at **[LuxAI](https://luxai.com)** for the [QTrobot](https://luxai.com/qtrobot-for-research/) ecosystem, MAGPIE is generic enough for any Python-based distributed or AI pipeline.
 
@@ -33,13 +33,14 @@ Originally developed at **[LuxAI](https://luxai.com)** for the [QTrobot](https:/
 - **Pub/Sub streaming** — high-throughput topic-based messaging via `StreamWriter` / `StreamReader`
 - **Request/Response RPC** — synchronous and async-friendly RPC via `ZMQRpcRequester` / `ZMQRpcResponder`
 - **MQTT transport** — full pub/sub and RPC over MQTT with a shared connection; supports `mqtt://`, `mqtts://`, `ws://`, `wss://`, TLS, auth, LWT, and auto-reconnect
-- **Pluggable transports** — ZeroMQ and MQTT today; add WebRTC or any custom transport without changing user code
+- **WebRTC transport** — P2P pub/sub, video/audio streaming, and RPC over WebRTC; MQTT or ZMQ used for the initial signaling handshake, all payload traffic flows directly peer-to-peer; STUN + optional TURN for NAT traversal
+- **Pluggable transports** — ZeroMQ, MQTT, and WebRTC today; add any custom transport without changing user code
 - **Fast serialization** — msgpack by default; bring your own serializer via the abstract interface
 - **Typed frames** — `ImageFrameJpeg`, `ImageFrameCV`, `AudioFrameRaw`, `AudioFrameFlac`, and more
 - **Node helpers** — base classes (`SourceNode`, `SinkNode`, `ServerNode`, …) to build robust streaming services
 - **Network discovery** — mDNS/Zeroconf node advertisement and scanning via `ZconfDiscovery`
 - **CLI tools** — ready-to-use command-line tools for publishing, subscribing, RPC over both ZMQ and MQTT, video/audio streaming, and discovery
-- **Lightweight core** — heavy media dependencies (NumPy, OpenCV, soundfile) are fully opt-in
+- **Lightweight core** — heavy media dependencies (NumPy, OpenCV, soundfile, aiortc) are fully opt-in
 
 ---
 
@@ -59,6 +60,7 @@ pip install luxai-magpie
 | `pip install "luxai-magpie[audio]"` | Audio frames + capture/player CLI tools (numpy, soundfile, sounddevice) |
 | `pip install "luxai-magpie[video]"` | Image frames + capture/viewer CLI tools (numpy, OpenCV, simplejpeg) |
 | `pip install "luxai-magpie[discovery]"` | `magpie-discovery` CLI tool (zeroconf) |
+| `pip install "luxai-magpie[webrtc]"` | WebRTC transport — P2P pub/sub, video/audio, RPC over internet (aiortc, numpy) |
 | `pip install "luxai-magpie[full]"` | All of the above |
 
 > **Note:** `magpie-publish`, `magpie-subscribe`, and `magpie-request` work with the base install — no extras needed (ZeroMQ is a core dependency). All CLI entry points are always registered; tools that require a missing extra will print a clear install instruction and exit.
@@ -267,6 +269,149 @@ conn = MqttConnection(
     ),
 )
 conn.connect()
+```
+
+### WebRTC Pub/Sub
+
+WebRTC transport enables **P2P communication over the internet** — no broker in the data path after the initial handshake.  A `WebRTCConnection` is shared by all publishers and subscribers, mirroring the `MqttConnection` pattern.
+
+Signaling (SDP offer/answer + ICE candidates) is exchanged via any existing MAGPIE transport — pass a connected `MqttConnection` directly.  Role negotiation (offer vs answer) is automatic.
+
+`WebRTCPublisher` routes internally based on frame type:
+- `ImageFrame*` → native WebRTC **video media track** (H.264/VP8, no msgpack overhead)
+- `AudioFrame*` → native WebRTC **audio media track** (Opus)
+- Everything else → **data channel** (msgpack-serialized, topic-routed)
+
+**Publisher:**
+
+```python
+from luxai.magpie.transport import MqttConnection
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher, WebRTCOptions
+
+signal_conn = MqttConnection("mqtt://broker.hivemq.com:1883")
+signal_conn.connect()
+
+opts = WebRTCOptions(session_id="my-robot", stun_servers=["stun:stun.l.google.com:19302"])
+conn = WebRTCConnection(signaling=signal_conn, options=opts)
+conn.connect(timeout=20.0)
+
+pub = WebRTCPublisher(conn)
+pub.write({"motor": [0.1, 0.2, 0.3]}, topic="robot/state")   # → data channel
+pub.write(ImageFrameCV.from_cv_image(frame))                   # → video media track
+
+pub.close()
+conn.disconnect()
+signal_conn.disconnect()
+```
+
+**Subscriber:**
+
+```python
+from luxai.magpie.transport import MqttConnection
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCSubscriber, WebRTCOptions
+
+signal_conn = MqttConnection("mqtt://broker.hivemq.com:1883")
+signal_conn.connect()
+
+opts = WebRTCOptions(session_id="my-robot", stun_servers=["stun:stun.l.google.com:19302"])
+conn = WebRTCConnection(signaling=signal_conn, options=opts)
+conn.connect(timeout=20.0)
+
+sub  = WebRTCSubscriber(conn, topic="robot/state")             # data channel topic
+vsub = WebRTCSubscriber(conn, topic=WebRTCSubscriber.VIDEO_TOPIC)  # video media track
+
+data, _ = sub.read(timeout=5.0)
+frame, _ = vsub.read(timeout=5.0)   # returns ImageFrameRaw
+
+sub.close()
+vsub.close()
+conn.disconnect()
+signal_conn.disconnect()
+```
+
+### WebRTC Request / Response RPC
+
+RPC over WebRTC uses the bidirectional data channel — no broker in the hot path, lower latency than MQTT RPC.  No `reply_to` topic is needed since the channel is P2P.
+
+**Requester:**
+
+```python
+from luxai.magpie.transport import MqttConnection
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcRequester, WebRTCOptions
+
+signal_conn = MqttConnection("mqtt://broker.hivemq.com:1883")
+signal_conn.connect()
+
+opts = WebRTCOptions(session_id="my-robot-rpc")
+conn = WebRTCConnection(signaling=signal_conn, options=opts)
+conn.connect(timeout=20.0)
+
+client = WebRTCRpcRequester(conn, service_name="robot/motion")
+try:
+    response = client.call({"action": "move", "x": 1.0}, timeout=5.0)
+    print("Response:", response)
+except TimeoutError:
+    print("Request timed out")
+finally:
+    client.close()
+    conn.disconnect()
+    signal_conn.disconnect()
+```
+
+**Responder:**
+
+```python
+from luxai.magpie.transport import MqttConnection
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcResponder, WebRTCOptions
+
+signal_conn = MqttConnection("mqtt://broker.hivemq.com:1883")
+signal_conn.connect()
+
+opts = WebRTCOptions(session_id="my-robot-rpc")
+conn = WebRTCConnection(signaling=signal_conn, options=opts)
+conn.connect(timeout=20.0)
+
+def handle(request):
+    return {"status": "ok", "echo": request}
+
+server = WebRTCRpcResponder(conn, service_name="robot/motion")
+while True:
+    try:
+        server.handle_once(handler=handle, timeout=1.0)
+    except TimeoutError:
+        pass
+    except KeyboardInterrupt:
+        server.close()
+        break
+
+conn.disconnect()
+signal_conn.disconnect()
+```
+
+### WebRTC Advanced Options
+
+```python
+from luxai.magpie.transport.webrtc import WebRTCOptions, WebRTCTurnServer
+
+opts = WebRTCOptions(
+    session_id="my-robot",                              # shared by both peers; auto-generated if omitted
+    stun_servers=["stun:stun.l.google.com:19302"],      # default
+    turn_servers=[                                       # optional: for strict NAT / corporate firewalls
+        WebRTCTurnServer(
+            url="turn:myturn.server:3478",
+            username="user",
+            credential="pass",
+        )
+    ],
+    ice_transport_policy="all",                          # "all" or "relay" (force TURN only)
+    data_channel_ordered=True,
+    data_channel_max_retransmits=None,                   # None = reliable; 0 = fire-and-forget
+    video_codec="H264",                                  # "H264", "VP8", "VP9"
+    audio_codec="opus",
+    video_bitrate=2000,                                  # kbps
+    audio_bitrate=96,                                    # kbps
+)
+conn = WebRTCConnection(signaling=signal_conn, options=opts)
 ```
 
 ### Network Discovery
@@ -537,7 +682,6 @@ MAGPIE powers the internal messaging infrastructure of [QTrobot](https://luxai.c
 **Status:** Beta — actively used in production-like systems. APIs are mostly stable; minor changes are still possible.
 
 **Roadmap:**
-- Additional transports (WebRTC)
 - Multi-transport support (route the same stream over ZMQ and MQTT simultaneously)
 - Higher-level pipeline abstractions for AI workloads
 
