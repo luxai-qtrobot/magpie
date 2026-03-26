@@ -66,13 +66,24 @@ class _MagpieVideoTrack(VideoStreamTrack):
     def __init__(self, loop: asyncio.AbstractEventLoop):
         super().__init__()
         self._loop = loop
-        self._queue: asyncio.Queue = asyncio.Queue()
+        # maxsize=1: always keep only the latest frame; drop stale frames
+        # when the remote peer is slow or disconnected.
+        self._queue: asyncio.Queue = asyncio.Queue(maxsize=1)
         self._closed = False
 
     def push(self, av_frame: "av.VideoFrame") -> None:
-        """Thread-safe: enqueue an av.VideoFrame for transmission."""
+        """Thread-safe: push the latest frame, dropping any unread previous frame."""
         if not self._closed:
-            self._loop.call_soon_threadsafe(self._queue.put_nowait, av_frame)
+            def _put(f):
+                # Drain the old frame before pushing the new one so the queue
+                # never grows beyond 1 entry.
+                if not self._queue.empty():
+                    try:
+                        self._queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                self._queue.put_nowait(f)
+            self._loop.call_soon_threadsafe(_put, av_frame)
 
     async def recv(self) -> "av.VideoFrame":
         pts, time_base = await self.next_timestamp()
