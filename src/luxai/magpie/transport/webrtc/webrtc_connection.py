@@ -36,20 +36,24 @@ try:
         RTCIceServer,
         RTCConfiguration,
         MediaStreamTrack,
+        VideoStreamTrack,
+        AudioStreamTrack,
     )
     from aiortc.contrib.media import MediaStreamError
     import av
     _AIORTC_AVAILABLE = True
 except ImportError:
     _AIORTC_AVAILABLE = False
-    MediaStreamTrack = object  # fallback base for type checking
+    MediaStreamTrack = object  # fallback bases for type checking
+    VideoStreamTrack = object
+    AudioStreamTrack = object
 
 
 # ---------------------------------------------------------------------------
 # Internal media tracks (created inside the asyncio loop)
 # ---------------------------------------------------------------------------
 
-class _MagpieVideoTrack(MediaStreamTrack):
+class _MagpieVideoTrack(VideoStreamTrack):
     """
     Custom aiortc video source track backed by a thread-safe push queue.
 
@@ -86,7 +90,7 @@ class _MagpieVideoTrack(MediaStreamTrack):
         super().stop()
 
 
-class _MagpieAudioTrack(MediaStreamTrack):
+class _MagpieAudioTrack(AudioStreamTrack):
     """
     Custom aiortc audio source track backed by a thread-safe push queue.
 
