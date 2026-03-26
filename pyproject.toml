@@ -64,6 +64,11 @@ discovery = [
     "zeroconf",
 ]
 
+webrtc = [
+    "aiortc>=1.6.0",
+    "numpy",
+]
+
 dev = [
     "numpy",
     "opencv-python",
@@ -72,6 +77,7 @@ dev = [
     "soundfile",
     "zeroconf",
     "paho-mqtt>=1.6.0",
+    "aiortc>=1.6.0",
     "pytest",
     "coverage",
 ]
@@ -84,6 +90,7 @@ full = [
     "soundfile",
     "zeroconf",
     "paho-mqtt>=1.6.0",
+    "aiortc>=1.6.0",
 ]
 
 
