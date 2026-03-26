@@ -16,33 +16,31 @@ TIP: Change SESSION_ID to something unique to avoid collisions with other
 import time
 
 from luxai.magpie.transport import MqttConnection
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher, WebRTCOptions
 from luxai.magpie.utils import Logger
 
 
-BROKER_URI = "mqtt://broker.hivemq.com:1883"
-SESSION_ID = "magpie/examples/webrtc"
-TOPIC      = "robot/state"
+BROKER_URI = "mqtt://broker.hivemq.com:1883"  # MQTT broker used only for signaling
+SESSION_ID = "magpie/examples/webrtc"         # shared rendezvous name — must match subscriber
+TOPIC      = "robot/state"                    # topic to publish data on
 
 
 if __name__ == "__main__":
     Logger.set_level("DEBUG")
 
     # Signaling transport — MQTT over internet (or ZMQ for LAN)
-    signal_conn = MqttConnection(BROKER_URI, client_id="magpie-webrtc-pub")
+    signal_conn = MqttConnection(BROKER_URI)
     if not signal_conn.connect(timeout=10.0):
         raise SystemExit("Could not connect to MQTT broker.")
 
-    # WebRTC connection — role and ICE negotiation are automatic
-    from luxai.magpie.transport.webrtc import WebRTCOptions
-    opts = WebRTCOptions(
-        session_id=SESSION_ID,
-        stun_servers=["stun:stun.l.google.com:19302"],
-        # turn_servers=[WebRTCTurnServer(url="turn:myturn.server:3478",
-        #                                username="u", credential="p")],
-    )
-    conn = WebRTCConnection(signaling=signal_conn, options=opts)
-    if not conn.connect(timeout=20.0):
+    # optional WebRTC connections options
+    # opts = WebRTCOptions(    
+    #     stun_servers=["stun:stun.l.google.com:19302"],
+    #     # turn_servers=[WebRTCTurnServer(url="turn:myturn.server:3478",
+    #     #                                username="u", credential="p")],
+    # )
+    conn = WebRTCConnection(signaling=signal_conn, session_id=SESSION_ID)
+    if not conn.connect():
         raise SystemExit("WebRTC handshake timed out.")
 
     pub = WebRTCPublisher(conn)

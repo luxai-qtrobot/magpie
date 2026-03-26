@@ -13,9 +13,9 @@ from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCSubscriber, We
 from luxai.magpie.utils import Logger
 
 
-BROKER_URI = "mqtt://broker.hivemq.com:1883"
-SESSION_ID = "magpie/examples/webrtc"
-TOPIC      = "robot/state"
+BROKER_URI = "mqtt://broker.hivemq.com:1883"  # MQTT broker used only for signaling
+SESSION_ID = "magpie/examples/webrtc"         # shared rendezvous name — must match publisher
+TOPIC      = "robot/state"                    # topic to subscribe to
 
 
 if __name__ == "__main__":
@@ -25,12 +25,12 @@ if __name__ == "__main__":
     if not signal_conn.connect(timeout=10.0):
         raise SystemExit("Could not connect to MQTT broker.")
 
-    opts = WebRTCOptions(
-        session_id=SESSION_ID,
-        stun_servers=["stun:stun.l.google.com:19302"],
-    )
-    conn = WebRTCConnection(signaling=signal_conn, options=opts)
-    if not conn.connect(timeout=20.0):
+    # optional WebRTC connection options
+    # opts = WebRTCOptions(
+    #     stun_servers=["stun:stun.l.google.com:19302"],
+    # )
+    conn = WebRTCConnection(signaling=signal_conn, session_id=SESSION_ID)
+    if not conn.connect():
         raise SystemExit("WebRTC handshake timed out.")
 
     sub = WebRTCSubscriber(conn, topic=TOPIC)

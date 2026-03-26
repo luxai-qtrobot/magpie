@@ -11,14 +11,15 @@ Usage (run together with webrtc_rpc_requester.py):
 
 from luxai.magpie.transport import MqttConnection
 from luxai.magpie.transport.webrtc import (
-    WebRTCConnection, WebRTCRpcResponder, WebRTCOptions
+    WebRTCConnection, WebRTCRpcResponder,
+    WebRTCOptions,  # optional — uncomment opts block below to use
 )
 from luxai.magpie.utils import Logger
 
 
-BROKER_URI   = "mqtt://broker.hivemq.com:1883"
-SESSION_ID   = "magpie/examples/webrtc-rpc"
-SERVICE_NAME = "robot/motion"
+BROKER_URI   = "mqtt://broker.hivemq.com:1883"  # MQTT broker used only for signaling
+SESSION_ID   = "magpie/examples/webrtc-rpc"     # shared rendezvous name — must match requester
+SERVICE_NAME = "robot/motion"                    # RPC service name to expose
 
 
 def on_request(request: object) -> object:
@@ -33,12 +34,12 @@ if __name__ == "__main__":
     if not signal_conn.connect(timeout=10.0):
         raise SystemExit("Could not connect to MQTT broker.")
 
-    opts = WebRTCOptions(
-        session_id=SESSION_ID,
-        stun_servers=["stun:stun.l.google.com:19302"],
-    )
-    conn = WebRTCConnection(signaling=signal_conn, options=opts)
-    if not conn.connect(timeout=20.0):
+    # optional WebRTC connection options
+    # opts = WebRTCOptions(
+    #     stun_servers=["stun:stun.l.google.com:19302"],
+    # )
+    conn = WebRTCConnection(signaling=signal_conn, session_id=SESSION_ID)
+    if not conn.connect():
         raise SystemExit("WebRTC handshake timed out.")
 
     responder = WebRTCRpcResponder(conn, service_name=SERVICE_NAME)
