@@ -39,7 +39,7 @@ class WebRTCRpcRequester(RpcRequester):
 
     Usage::
 
-        conn = WebRTCConnection(signaling=signal_conn)
+        conn = WebRTCConnection.with_mqtt("mqtt://broker:1883", session_id="my-robot")
         conn.connect()
 
         client = WebRTCRpcRequester(conn, service_name="robot/motion")

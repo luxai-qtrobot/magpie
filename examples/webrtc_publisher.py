@@ -15,8 +15,7 @@ TIP: Change SESSION_ID to something unique to avoid collisions with other
 
 import time
 
-from luxai.magpie.transport import MqttConnection
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher, WebRTCOptions
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher
 from luxai.magpie.utils import Logger
 
 
@@ -28,18 +27,22 @@ TOPIC      = "robot/state"                    # topic to publish data on
 if __name__ == "__main__":
     Logger.set_level("DEBUG")
 
-    # Signaling transport — MQTT over internet (or ZMQ for LAN)
-    signal_conn = MqttConnection(BROKER_URI)
-    if not signal_conn.connect(timeout=10.0):
-        raise SystemExit("Could not connect to MQTT broker.")
+    # WebRTCConnection.with_mqtt() creates the MQTT signaling connection and
+    # WebRTCConnection in one step.  For broker-less LAN use with_zmq() instead:
+    conn = WebRTCConnection.with_zmq("tcp://127.0.0.1:5555", SESSION_ID, bind=True)
+    # conn = WebRTCConnection.with_mqtt(BROKER_URI, SESSION_ID)
 
-    # optional WebRTC connections options
-    # opts = WebRTCOptions(    
-    #     stun_servers=["stun:stun.l.google.com:19302"],
-    #     # turn_servers=[WebRTCTurnServer(url="turn:myturn.server:3478",
-    #     #                                username="u", credential="p")],
+    # optional WebRTC connection options:
+    # from luxai.magpie.transport.webrtc import WebRTCOptions, WebRTCTurnServer
+    # conn = WebRTCConnection.with_mqtt(
+    #     BROKER_URI, SESSION_ID,
+    #     options=WebRTCOptions(
+    #         stun_servers=["stun:stun.l.google.com:19302"],
+    #         # turn_servers=[WebRTCTurnServer(url="turn:myturn.server:3478",
+    #         #                                username="u", credential="p")],
+    #     ),
     # )
-    conn = WebRTCConnection(signaling=signal_conn, session_id=SESSION_ID)
+
     if not conn.connect():
         raise SystemExit("WebRTC handshake timed out.")
 
@@ -58,4 +61,3 @@ if __name__ == "__main__":
 
     pub.close()
     conn.disconnect()
-    signal_conn.disconnect()

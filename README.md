@@ -275,56 +275,70 @@ conn.connect()
 
 WebRTC transport enables **P2P communication over the internet** — no broker in the data path after the initial handshake.  A `WebRTCConnection` is shared by all publishers and subscribers, mirroring the `MqttConnection` pattern.
 
-Signaling (SDP offer/answer + ICE candidates) is exchanged via any existing MAGPIE transport — pass a connected `MqttConnection` directly.  Role negotiation (offer vs answer) is automatic.
+Signaling (SDP offer/answer + ICE candidates) is exchanged via a **`WebRtcSignaler`** — an abstract transport that carries only the short handshake messages.  Two implementations are built in:
 
-`WebRTCPublisher` routes internally based on frame type:
+| Signaler | When to use |
+|---|---|
+| `MqttSignaler` | Internet / cross-network — requires an MQTT broker |
+| `ZmqSignaler` | LAN / localhost — broker-less ZMQ PAIR socket |
+
+Role negotiation (offer vs answer) is fully automatic.  `WebRTCPublisher` routes internally based on frame type:
 - `ImageFrame*` → native WebRTC **video media track** (H.264/VP8, no msgpack overhead)
 - `AudioFrame*` → native WebRTC **audio media track** (Opus)
 - Everything else → **data channel** (msgpack-serialized, topic-routed)
 
-**Publisher:**
+**Publisher (MQTT signaling — internet):**
 
 ```python
-from luxai.magpie.transport import MqttConnection
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher
 
-signal_conn = MqttConnection("mqtt://broker.hivemq.com:1883")
-signal_conn.connect()
-
-conn = WebRTCConnection(signaling=signal_conn, session_id="my-robot")
+# with_mqtt() creates the MqttSignaler and WebRTCConnection in one step.
+# conn.disconnect() also disconnects the signaler — no separate teardown needed.
+conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="my-robot")
 conn.connect()
 
 pub = WebRTCPublisher(conn)
 pub.write({"motor": [0.1, 0.2, 0.3]}, topic="robot/state")   # → data channel
-pub.write(ImageFrameCV.from_cv_image(frame))                   # → video media track
+pub.write(ImageFrameRaw(...))                                   # → video media track
 
 pub.close()
 conn.disconnect()
-signal_conn.disconnect()
+```
+
+**Publisher (ZMQ signaling — LAN / localhost):**
+
+```python
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher
+
+# One peer binds (bind=True), the other connects (bind=False, the default).
+conn = WebRTCConnection.with_zmq("tcp://127.0.0.1:5555", session_id="my-robot", bind=True)
+conn.connect()
+
+pub = WebRTCPublisher(conn)
+pub.write({"motor": [0.1, 0.2, 0.3]}, topic="robot/state")
+
+pub.close()
+conn.disconnect()
 ```
 
 **Subscriber:**
 
 ```python
-from luxai.magpie.transport import MqttConnection
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCSubscriber
 
-signal_conn = MqttConnection("mqtt://broker.hivemq.com:1883")
-signal_conn.connect()
-
-conn = WebRTCConnection(signaling=signal_conn, session_id="my-robot")
+conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="my-robot")
+# or: conn = WebRTCConnection.with_zmq("tcp://127.0.0.1:5555", session_id="my-robot", bind=False)
 conn.connect()
 
-sub  = WebRTCSubscriber(conn, topic="robot/state")             # data channel topic
-vsub = WebRTCSubscriber(conn, topic=WebRTCSubscriber.VIDEO_TOPIC)  # video media track
+sub  = WebRTCSubscriber(conn, topic="robot/state")                  # data channel topic
+vsub = WebRTCSubscriber(conn, topic=WebRTCSubscriber.VIDEO_TOPIC)   # video media track
 
 data, _ = sub.read(timeout=5.0)
-frame, _ = vsub.read(timeout=5.0)   # returns ImageFrameRaw
+frame, _ = vsub.read(timeout=5.0)   # returns ImageFrameRaw (BGR)
 
 sub.close()
 vsub.close()
 conn.disconnect()
-signal_conn.disconnect()
 ```
 
 ### WebRTC Request / Response RPC
@@ -334,13 +348,9 @@ RPC over WebRTC uses the bidirectional data channel — no broker in the hot pat
 **Requester:**
 
 ```python
-from luxai.magpie.transport import MqttConnection
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcRequester
 
-signal_conn = MqttConnection("mqtt://broker.hivemq.com:1883")
-signal_conn.connect()
-
-conn = WebRTCConnection(signaling=signal_conn, session_id="my-robot-rpc")
+conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="my-robot-rpc")
 conn.connect()
 
 client = WebRTCRpcRequester(conn, service_name="robot/motion")
@@ -352,19 +362,14 @@ except TimeoutError:
 finally:
     client.close()
     conn.disconnect()
-    signal_conn.disconnect()
 ```
 
 **Responder:**
 
 ```python
-from luxai.magpie.transport import MqttConnection
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcResponder
 
-signal_conn = MqttConnection("mqtt://broker.hivemq.com:1883")
-signal_conn.connect()
-
-conn = WebRTCConnection(signaling=signal_conn, session_id="my-robot-rpc")
+conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="my-robot-rpc")
 conn.connect()
 
 def handle(request):
@@ -381,18 +386,18 @@ while True:
         break
 
 conn.disconnect()
-signal_conn.disconnect()
 ```
 
 ### WebRTC Advanced Options
 
+**Custom ICE/codec configuration:**
+
 ```python
-from luxai.magpie.transport.webrtc import WebRTCOptions, WebRTCTurnServer
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCOptions, WebRTCTurnServer
 
 opts = WebRTCOptions(
-    session_id="my-robot",                              # shared by both peers; auto-generated if omitted
     stun_servers=["stun:stun.l.google.com:19302"],      # default
-    turn_servers=[                                       # optional: for strict NAT / corporate firewalls
+    turn_servers=[                                       # optional: strict NAT / corporate firewalls
         WebRTCTurnServer(
             url="turn:myturn.server:3478",
             username="user",
@@ -407,7 +412,34 @@ opts = WebRTCOptions(
     video_bitrate=2000,                                  # kbps
     audio_bitrate=96,                                    # kbps
 )
-conn = WebRTCConnection(signaling=signal_conn, options=opts)
+conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", "my-robot", options=opts)
+```
+
+**Automatic reconnection:**
+
+```python
+# reconnect=True: when the peer drops, the connection is re-established automatically.
+# Frames sent during the reconnect gap are silently dropped.
+conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883",
+                                   session_id="my-robot", reconnect=True)
+```
+
+**Using a signaler directly (advanced / custom transport):**
+
+```python
+from luxai.magpie.transport.webrtc import WebRTCConnection, MqttSignaler, ZmqSignaler
+
+# MqttSignaler — wraps an MQTT connection internally
+signaler = MqttSignaler("mqtt://broker.hivemq.com:1883", session_id="my-robot",
+                        client_id="robot-side", timeout=10.0)
+conn = WebRTCConnection(signaler=signaler, reconnect=True)
+conn.connect()
+# conn.disconnect() also calls signaler.disconnect()
+
+# ZmqSignaler — broker-less PAIR socket (one side binds, the other connects)
+signaler = ZmqSignaler("tcp://127.0.0.1:5555", session_id="my-robot", bind=True)
+conn = WebRTCConnection(signaler=signaler)
+conn.connect()
 ```
 
 ### Network Discovery
@@ -664,6 +696,100 @@ Pass advanced broker connection options via `--mqtt-params @myparams.json`:
 ```
 
 All sections are optional — omit any section to keep its default value.
+
+---
+
+## WebRTC Command-Line Tools
+
+Install with:
+
+```bash
+pip install "luxai-magpie[webrtc,mqtt]"
+```
+
+WebRTC CLI tools always take a `session_id` positional argument — both peers must use the same value to find each other.  Signaling is configured via `--signaling URL`:
+
+| URL scheme | Transport | Notes |
+|---|---|---|
+| `mqtt://host:port` | MQTT broker | Works over the internet; requires `[mqtt]` extra |
+| `tcp://host:port` | ZMQ PAIR socket | Broker-less LAN; one side needs `--bind` |
+
+### `magpie-publish-webrtc` — Publish messages over a WebRTC data channel
+
+```bash
+# Publish once via MQTT signaling (HiveMQ public broker)
+magpie-publish-webrtc my-robot /robot/state '{"x": 1.0}' \
+    --signaling mqtt://broker.hivemq.com:1883
+
+# Publish at 10 Hz until stopped
+magpie-publish-webrtc my-robot /robot/state '{"x": 1.0}' \
+    --signaling mqtt://broker.hivemq.com:1883 --rate 10
+
+# LAN / localhost: publisher binds the ZMQ signaling socket
+magpie-publish-webrtc my-robot /robot/state '{"x": 1.0}' \
+    --signaling tcp://127.0.0.1:5555 --bind
+```
+
+### `magpie-subscribe-webrtc` — Subscribe to a WebRTC data channel topic
+
+```bash
+# Subscribe via MQTT signaling
+magpie-subscribe-webrtc my-robot /robot/state \
+    --signaling mqtt://broker.hivemq.com:1883 --pretty
+
+# LAN: subscriber connects (no --bind)
+magpie-subscribe-webrtc my-robot /robot/state \
+    --signaling tcp://127.0.0.1:5555
+
+# Receive one message and exit
+magpie-subscribe-webrtc my-robot /robot/state \
+    --signaling mqtt://broker.hivemq.com:1883 --once
+
+# Show message frequency
+magpie-subscribe-webrtc my-robot /robot/state \
+    --signaling mqtt://broker.hivemq.com:1883 --hz
+```
+
+### `magpie-request-webrtc` — Send an RPC request over a WebRTC data channel
+
+```bash
+# Send a request and print the response
+magpie-request-webrtc my-robot robot/motion '{"action": "move", "x": 1.0}' \
+    --signaling mqtt://broker.hivemq.com:1883 --pretty
+
+# LAN
+magpie-request-webrtc my-robot robot/motion '{"action": "move", "x": 1.0}' \
+    --signaling tcp://127.0.0.1:5555
+```
+
+### `magpie-video-capture-webrtc` — Stream camera video over a WebRTC media track
+
+```bash
+# Stream camera 0 at 1280×720, 30 fps via MQTT signaling
+magpie-video-capture-webrtc my-robot \
+    --signaling mqtt://broker.hivemq.com:1883
+
+# LAN: capture side binds the ZMQ signaling socket
+magpie-video-capture-webrtc my-robot \
+    --signaling tcp://127.0.0.1:5555 --bind
+
+# Choose camera, resolution, and frame rate
+magpie-video-capture-webrtc my-robot \
+    --signaling mqtt://broker.hivemq.com:1883 \
+    --camera 1 --size 640 480 --framerate 15
+```
+
+### `magpie-video-viewer-webrtc` — Receive and display a WebRTC video stream
+
+```bash
+# View via MQTT signaling
+magpie-video-viewer-webrtc my-robot \
+    --signaling mqtt://broker.hivemq.com:1883
+
+# LAN: viewer connects (no --bind)
+magpie-video-viewer-webrtc my-robot \
+    --signaling tcp://127.0.0.1:5555
+```
 
 ---
 

@@ -13,11 +13,7 @@ Usage (run together with webrtc_video_subscriber.py):
 import cv2
 
 from luxai.magpie.frames.image import ImageFrameRaw
-from luxai.magpie.transport import MqttConnection
-from luxai.magpie.transport.webrtc import (
-    WebRTCConnection, WebRTCPublisher,
-    WebRTCOptions,  # optional — uncomment opts block below to use
-)
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher
 from luxai.magpie.utils import Logger
 
 
@@ -28,17 +24,21 @@ SESSION_ID = "magpie/examples/webrtc-video"    # shared rendezvous name — must
 if __name__ == "__main__":
     Logger.set_level("DEBUG")
 
-    signal_conn = MqttConnection(BROKER_URI, client_id="magpie-webrtc-vidpub")
-    if not signal_conn.connect(timeout=10.0):
-        raise SystemExit("Could not connect to MQTT broker.")
+    # For broker-less LAN use with_zmq() instead:
+    conn = WebRTCConnection.with_zmq("tcp://127.0.0.1:5555", SESSION_ID, bind=True)
+    # conn = WebRTCConnection.with_mqtt(BROKER_URI, SESSION_ID, client_id="magpie-webrtc-vidpub")
 
-    # optional WebRTC connection options
-    # opts = WebRTCOptions(
-    #     stun_servers=["stun:stun.l.google.com:19302"],
-    #     video_codec="H264",
-    #     video_bitrate=2000,
+    # optional WebRTC connection options:
+    # from luxai.magpie.transport.webrtc import WebRTCOptions
+    # conn = WebRTCConnection.with_mqtt(
+    #     BROKER_URI, SESSION_ID,
+    #     options=WebRTCOptions(
+    #         stun_servers=["stun:stun.l.google.com:19302"],
+    #         video_codec="H264",
+    #         video_bitrate=2000,
+    #     ),
     # )
-    conn = WebRTCConnection(signaling=signal_conn, session_id=SESSION_ID)
+
     if not conn.connect():
         raise SystemExit("WebRTC handshake timed out.")
 
@@ -66,4 +66,3 @@ if __name__ == "__main__":
     cap.release()
     pub.close()
     conn.disconnect()
-    signal_conn.disconnect()

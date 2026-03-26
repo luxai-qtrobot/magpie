@@ -112,6 +112,11 @@ magpie-discovery = "luxai.magpie.tools.zconf_discovery:main"
 magpie-publish-mqtt = "luxai.magpie.tools.mqtt_publish:main"
 magpie-subscribe-mqtt = "luxai.magpie.tools.mqtt_subscribe:main"
 magpie-request-mqtt = "luxai.magpie.tools.mqtt_request:main"
+magpie-publish-webrtc = "luxai.magpie.tools.webrtc_publish:main"
+magpie-subscribe-webrtc = "luxai.magpie.tools.webrtc_subscribe:main"
+magpie-request-webrtc = "luxai.magpie.tools.webrtc_request:main"
+magpie-video-capture-webrtc = "luxai.magpie.tools.webrtc_video_capture:main"
+magpie-video-viewer-webrtc = "luxai.magpie.tools.webrtc_video_viewer:main"
 
 # -----------------------------
 # setuptools configuration

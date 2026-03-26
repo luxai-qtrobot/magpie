@@ -7,9 +7,9 @@ Architecture overview
   subscribers, and RPC components — mirroring ``MqttConnection``.
 * A single ``asyncio`` event loop runs in a dedicated background thread;
   all aiortc operations live there.
-* Signaling (SDP offer/answer + ICE candidates) is exchanged via any
-  MAGPIE-compatible signaling object that exposes ``publish()`` and
-  ``add_subscription()`` — a plain ``MqttConnection`` works out of the box.
+* Signaling (SDP offer/answer + ICE candidates) is exchanged via a
+  ``WebRtcSignaler`` — use ``MqttSignaler`` for internet connectivity or
+  ``ZmqSignaler`` for broker-less LAN signaling.
 * Role (offer vs answer) is auto-negotiated: both peers broadcast a
   ``hello`` message; the peer with the lexicographically higher ``peer_id``
   creates the SDP offer.
@@ -28,6 +28,7 @@ from luxai.magpie.serializer.msgpack_serializer import MsgpackSerializer
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.utils.common import get_uinque_id
 from .webrtc_options import WebRTCOptions
+from .webrtc_signaler import WebRtcSignaler
 
 try:
     from aiortc import (
@@ -138,46 +139,57 @@ class WebRTCConnection:
     ``WebRTCPublisher``, ``WebRTCSubscriber``, ``WebRTCRpcRequester``, and
     ``WebRTCRpcResponder``.
 
-    The *signaling* parameter accepts any object that exposes
-    ``publish(topic, payload_bytes)`` and
-    ``add_subscription(topic, callback)`` / ``remove_subscription(topic, callback)``
-    — a plain ``MqttConnection`` satisfies this interface.
+    The preferred way to create an instance is via the class-method shortcuts::
 
-    Usage::
+        # MQTT signaling (works over the internet):
+        conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883",
+                                          session_id="my-robot")
 
-        signal_conn = MqttConnection("mqtt://broker.hivemq.com:1883")
-        signal_conn.connect()
+        # ZMQ PAIR signaling (broker-less, LAN):
+        conn = WebRTCConnection.with_zmq("tcp://192.168.1.10:5555",
+                                          session_id="my-robot", bind=False)
 
-        conn = WebRTCConnection(signaling=signal_conn)
-        if not conn.connect(timeout=20.0):
-            raise RuntimeError("WebRTC handshake timed out")
+    Or supply a custom :class:`WebRtcSignaler` directly::
 
-        pub = WebRTCPublisher(conn)
-        sub = WebRTCSubscriber(conn, topic="robot/state")
+        signaler = MqttSignaler("mqtt://...", session_id="my-robot")
+        conn = WebRTCConnection(signaler=signaler, reconnect=True)
 
-        # ... use pub / sub ...
-
-        pub.close()
-        sub.close()
-        conn.disconnect()
-        signal_conn.disconnect()
+    Call ``conn.connect()`` to start the handshake, and ``conn.disconnect()``
+    to tear everything down (including the signaler).
     """
 
-    def __init__(self, signaling, session_id: str, options: Optional[WebRTCOptions] = None):
+    def __init__(
+        self,
+        signaler: WebRtcSignaler,
+        *,
+        reconnect: bool = False,
+        options: Optional[WebRTCOptions] = None,
+    ):
+        """
+        Args:
+            signaler:  Signaling transport that handles SDP/ICE exchange.
+                       Use :meth:`with_mqtt` or :meth:`with_zmq` for convenience.
+            reconnect: If ``True``, automatically re-establish the peer connection
+                       when it drops (``failed`` / ``disconnected`` / ``closed``
+                       state).  Frames sent during the reconnect gap are silently
+                       dropped.  Default: ``False``.
+            options:   Optional advanced WebRTC configuration (ICE servers,
+                       codec preferences, data channel settings).
+        """
         if not _AIORTC_AVAILABLE:
             raise ImportError(
                 "aiortc is required for WebRTC transport. "
                 "Install with: pip install 'luxai-magpie[webrtc]'"
             )
 
-        self._signaling = signaling
+        self._signaler = signaler
+        self._reconnect = reconnect
         self._options = options or WebRTCOptions()
         self._serializer = MsgpackSerializer()
 
         # Session / peer identity
-        self._session_id: str = session_id
+        self._session_id: str = signaler.session_id
         self._peer_id: str = get_uinque_id()[:12]
-        self._signal_topic: str = f"magpie/webrtc/{self._session_id}/signal"
 
         # aiortc objects (created in asyncio loop)
         self._pc: Optional["RTCPeerConnection"] = None
@@ -254,7 +266,7 @@ class WebRTCConnection:
         self._loop_thread.start()
 
         # Subscribe to signaling channel
-        self._signaling.add_subscription(self._signal_topic, self._on_signal_message)
+        self._signaler.subscribe(self._on_signal_message)
 
         # Kick off the async setup
         asyncio.run_coroutine_threadsafe(self._connect_async(), self._loop)
@@ -268,11 +280,11 @@ class WebRTCConnection:
         return self._connect_success
 
     def disconnect(self):
-        """Close the peer connection and clean up resources."""
+        """Close the peer connection, signaler, and clean up all resources."""
         self._closing = True
         self._connected = False
 
-        self._signaling.remove_subscription(self._signal_topic, self._on_signal_message)
+        self._signaler.unsubscribe()
 
         if self._loop and not self._loop.is_closed():
             asyncio.run_coroutine_threadsafe(self._close_async(), self._loop).result(timeout=5.0)
@@ -281,7 +293,71 @@ class WebRTCConnection:
         if self._loop_thread and self._loop_thread.is_alive():
             self._loop_thread.join(timeout=3.0)
 
+        self._signaler.disconnect()
         Logger.debug(f"WebRTCConnection({self._peer_id}): disconnected.")
+
+    # ------------------------------------------------------------------
+    # Class-method constructors (convenience shortcuts)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def with_mqtt(
+        cls,
+        broker_url: str,
+        session_id: str,
+        *,
+        client_id: Optional[str] = None,
+        timeout: float = 10.0,
+        reconnect: bool = False,
+        options: Optional[WebRTCOptions] = None,
+    ) -> "WebRTCConnection":
+        """
+        Create a ``WebRTCConnection`` using MQTT as the signaling transport.
+
+        Args:
+            broker_url: MQTT broker URI, e.g. ``mqtt://broker.hivemq.com:1883``.
+            session_id: Shared rendezvous name — must match the remote peer.
+            client_id:  Optional MQTT client identifier.
+            timeout:    Broker connection timeout in seconds (default: 10).
+            reconnect:  Automatically reconnect on peer disconnect (default: False).
+            options:    Optional advanced WebRTC configuration.
+
+        Raises:
+            ImportError:     If ``paho-mqtt`` is not installed.
+            ConnectionError: If the broker cannot be reached within *timeout*.
+        """
+        from .webrtc_signaler import MqttSignaler  # noqa: PLC0415
+        signaler = MqttSignaler(broker_url, session_id, client_id=client_id, timeout=timeout)
+        return cls(signaler=signaler, reconnect=reconnect, options=options)
+
+    @classmethod
+    def with_zmq(
+        cls,
+        endpoint: str,
+        session_id: str,
+        *,
+        bind: bool = False,
+        reconnect: bool = False,
+        options: Optional[WebRTCOptions] = None,
+    ) -> "WebRTCConnection":
+        """
+        Create a ``WebRTCConnection`` using a ZMQ PAIR socket for signaling
+        (broker-less, suitable for LAN / local use).
+
+        One peer must bind (``bind=True``) and the other must connect
+        (``bind=False``, the default).
+
+        Args:
+            endpoint:   ZMQ endpoint, e.g. ``tcp://192.168.1.10:5555``.
+                        Use ``tcp://*:5555`` when binding.
+            session_id: Shared rendezvous name.
+            bind:       ``True`` → bind the socket; ``False`` → connect (default).
+            reconnect:  Automatically reconnect on peer disconnect (default: False).
+            options:    Optional advanced WebRTC configuration.
+        """
+        from .webrtc_signaler import ZmqSignaler  # noqa: PLC0415
+        signaler = ZmqSignaler(endpoint, session_id, bind=bind)
+        return cls(signaler=signaler, reconnect=reconnect, options=options)
 
     # ------------------------------------------------------------------
     # Registration API (used by publisher / subscriber / rpc classes)
@@ -382,6 +458,37 @@ class WebRTCConnection:
         if self._pc:
             await self._pc.close()
 
+    async def _reconnect_async(self):
+        """Tear down the current PC and restart the handshake."""
+        # Stop and discard old media tracks
+        if self._video_track:
+            self._video_track.stop()
+            self._video_track = None
+        if self._audio_track:
+            self._audio_track.stop()
+            self._audio_track = None
+        if self._pc:
+            try:
+                await self._pc.close()
+            except Exception:
+                pass
+            self._pc = None
+
+        # Reset signaling state for fresh negotiation
+        self._data_channel = None
+        self._remote_peer_id = None
+        self._role_decided = False
+        self._pending_ice_candidates = []
+        self._connected = False
+
+        # Generate a new peer_id so both sides re-run role negotiation
+        self._peer_id = get_uinque_id()[:12]
+
+        Logger.debug(
+            f"WebRTCConnection: reconnecting with new peer_id={self._peer_id}"
+        )
+        await self._connect_async()
+
     # ------------------------------------------------------------------
     # Internal: connection setup
     # ------------------------------------------------------------------
@@ -444,10 +551,16 @@ class WebRTCConnection:
                 self._connected = True
                 self._connect_success = True
                 self._connect_event.set()
-            elif state in ("failed", "closed"):
+            elif state in ("failed", "disconnected", "closed"):
                 self._connected = False
                 if not self._connect_event.is_set():
                     self._connect_event.set()  # unblock connect() with failure
+                elif self._reconnect and not self._closing:
+                    Logger.info(
+                        f"WebRTCConnection({self._peer_id}): "
+                        f"connection {state} — reconnecting..."
+                    )
+                    asyncio.ensure_future(self._reconnect_async())
 
         @pc.on("icecandidate")
         async def on_icecandidate(candidate):
@@ -656,16 +769,16 @@ class WebRTCConnection:
         """Serialize and publish a signaling message (callable from any thread)."""
         try:
             payload = self._serializer.serialize(msg)
-            self._signaling.publish(self._signal_topic, payload)
+            self._signaler.publish(payload)
         except Exception as e:
             Logger.warning(
                 f"WebRTCConnection({self._peer_id}): signal send error: {e}"
             )
 
-    def _on_signal_message(self, payload_bytes: bytes, topic: str) -> None:
+    def _on_signal_message(self, payload_bytes: bytes) -> None:
         """
-        Called by the signaling transport (e.g. MQTT callback thread) when a
-        signaling message arrives.  Dispatches to the asyncio loop.
+        Called by the signaling transport when a signaling message arrives.
+        Dispatches to the asyncio loop.
         """
         try:
             msg = self._serializer.deserialize(payload_bytes)

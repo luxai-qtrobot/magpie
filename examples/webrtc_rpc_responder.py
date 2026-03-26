@@ -9,11 +9,7 @@ Usage (run together with webrtc_rpc_requester.py):
     Terminal 2 (operator): python examples/webrtc_rpc_requester.py
 """
 
-from luxai.magpie.transport import MqttConnection
-from luxai.magpie.transport.webrtc import (
-    WebRTCConnection, WebRTCRpcResponder,
-    WebRTCOptions,  # optional — uncomment opts block below to use
-)
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcResponder
 from luxai.magpie.utils import Logger
 
 
@@ -30,15 +26,9 @@ def on_request(request: object) -> object:
 if __name__ == "__main__":
     Logger.set_level("DEBUG")
 
-    signal_conn = MqttConnection(BROKER_URI, client_id="magpie-webrtc-rpcresp")
-    if not signal_conn.connect(timeout=10.0):
-        raise SystemExit("Could not connect to MQTT broker.")
-
-    # optional WebRTC connection options
-    # opts = WebRTCOptions(
-    #     stun_servers=["stun:stun.l.google.com:19302"],
-    # )
-    conn = WebRTCConnection(signaling=signal_conn, session_id=SESSION_ID)
+    # For broker-less LAN use with_zmq() instead:
+    conn = WebRTCConnection.with_zmq("tcp://127.0.0.1:5555", SESSION_ID, bind=True)
+    # conn = WebRTCConnection.with_mqtt(BROKER_URI, SESSION_ID, client_id="magpie-webrtc-rpcresp")
     if not conn.connect():
         raise SystemExit("WebRTC handshake timed out.")
 
@@ -55,4 +45,3 @@ if __name__ == "__main__":
 
     responder.close()
     conn.disconnect()
-    signal_conn.disconnect()
