@@ -159,7 +159,7 @@ class WebRTCConnection:
         signal_conn.disconnect()
     """
 
-    def __init__(self, signaling, options: Optional[WebRTCOptions] = None):
+    def __init__(self, signaling, session_id: str, options: Optional[WebRTCOptions] = None):
         if not _AIORTC_AVAILABLE:
             raise ImportError(
                 "aiortc is required for WebRTC transport. "
@@ -171,7 +171,7 @@ class WebRTCConnection:
         self._serializer = MsgpackSerializer()
 
         # Session / peer identity
-        self._session_id: str = self._options.session_id or f"magpie-{get_uinque_id()[:12]}"
+        self._session_id: str = session_id
         self._peer_id: str = get_uinque_id()[:12]
         self._signal_topic: str = f"magpie/webrtc/{self._session_id}/signal"
 
@@ -227,10 +227,15 @@ class WebRTCConnection:
     def is_connected(self) -> bool:
         return self._connected
 
-    def connect(self, timeout: float = 20.0) -> bool:
+    def connect(self, timeout: Optional[float] = None) -> bool:
         """
         Initiate the WebRTC handshake and block until the peer connection is
         established or *timeout* seconds elapse.
+
+        Args:
+            timeout: Maximum seconds to wait for the connection to be established.
+                     ``None`` (default) waits indefinitely — matching the pub/sub
+                     philosophy where a peer may appear at any time.
 
         Returns ``True`` on success, ``False`` on timeout or failure.
         """
@@ -349,7 +354,7 @@ class WebRTCConnection:
 
         Silently drops the message if the channel is not yet open.
         """
-        if self._closing or self._data_channel is None:
+        if self._closing or self._data_channel is None or self._data_channel.readyState != "open":
             return
         try:
             payload = self._serializer.serialize(msg)
@@ -703,6 +708,9 @@ class WebRTCConnection:
                     Logger.debug(
                         f"WebRTCConnection({self._peer_id}): role = answer"
                     )
+                    # Reply immediately so the offerer can detect us even if
+                    # it subscribed after we stopped broadcasting hellos.
+                    self._send_signal({"type": "hello", "peer_id": self._peer_id})
 
         # ---- offer: remote peer sent SDP offer ----
         elif msg_type == "offer":

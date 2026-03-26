@@ -286,14 +286,13 @@ Signaling (SDP offer/answer + ICE candidates) is exchanged via any existing MAGP
 
 ```python
 from luxai.magpie.transport import MqttConnection
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher, WebRTCOptions
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher
 
 signal_conn = MqttConnection("mqtt://broker.hivemq.com:1883")
 signal_conn.connect()
 
-opts = WebRTCOptions(session_id="my-robot", stun_servers=["stun:stun.l.google.com:19302"])
-conn = WebRTCConnection(signaling=signal_conn, options=opts)
-conn.connect(timeout=20.0)
+conn = WebRTCConnection(signaling=signal_conn, session_id="my-robot")
+conn.connect()
 
 pub = WebRTCPublisher(conn)
 pub.write({"motor": [0.1, 0.2, 0.3]}, topic="robot/state")   # → data channel
@@ -308,14 +307,13 @@ signal_conn.disconnect()
 
 ```python
 from luxai.magpie.transport import MqttConnection
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCSubscriber, WebRTCOptions
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCSubscriber
 
 signal_conn = MqttConnection("mqtt://broker.hivemq.com:1883")
 signal_conn.connect()
 
-opts = WebRTCOptions(session_id="my-robot", stun_servers=["stun:stun.l.google.com:19302"])
-conn = WebRTCConnection(signaling=signal_conn, options=opts)
-conn.connect(timeout=20.0)
+conn = WebRTCConnection(signaling=signal_conn, session_id="my-robot")
+conn.connect()
 
 sub  = WebRTCSubscriber(conn, topic="robot/state")             # data channel topic
 vsub = WebRTCSubscriber(conn, topic=WebRTCSubscriber.VIDEO_TOPIC)  # video media track
@@ -337,14 +335,13 @@ RPC over WebRTC uses the bidirectional data channel — no broker in the hot pat
 
 ```python
 from luxai.magpie.transport import MqttConnection
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcRequester, WebRTCOptions
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcRequester
 
 signal_conn = MqttConnection("mqtt://broker.hivemq.com:1883")
 signal_conn.connect()
 
-opts = WebRTCOptions(session_id="my-robot-rpc")
-conn = WebRTCConnection(signaling=signal_conn, options=opts)
-conn.connect(timeout=20.0)
+conn = WebRTCConnection(signaling=signal_conn, session_id="my-robot-rpc")
+conn.connect()
 
 client = WebRTCRpcRequester(conn, service_name="robot/motion")
 try:
@@ -362,14 +359,13 @@ finally:
 
 ```python
 from luxai.magpie.transport import MqttConnection
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcResponder, WebRTCOptions
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcResponder
 
 signal_conn = MqttConnection("mqtt://broker.hivemq.com:1883")
 signal_conn.connect()
 
-opts = WebRTCOptions(session_id="my-robot-rpc")
-conn = WebRTCConnection(signaling=signal_conn, options=opts)
-conn.connect(timeout=20.0)
+conn = WebRTCConnection(signaling=signal_conn, session_id="my-robot-rpc")
+conn.connect()
 
 def handle(request):
     return {"status": "ok", "echo": request}

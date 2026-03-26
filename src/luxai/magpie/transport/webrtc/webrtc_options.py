@@ -35,12 +35,6 @@ class WebRTCOptions:
         conn = WebRTCConnection(signaling=signal_conn, options=opts)
     """
 
-    # ---- Session identification ----------------------------------------
-    session_id: Optional[str] = None
-    """Shared identifier used by both peers to find each other on the signaling
-    channel.  Auto-generated (``magpie-<ulid>``) when omitted — set explicitly
-    when you need a stable, human-readable session name."""
-
     # ---- ICE / NAT traversal -------------------------------------------
     stun_servers: List[str] = field(
         default_factory=lambda: ["stun:stun.l.google.com:19302"]
