@@ -32,7 +32,7 @@ class WebRTCOptions:
             video_codec="H264",
             video_bitrate=2000,
         )
-        conn = WebRTCConnection(signaling=signal_conn, options=opts)
+        conn = WebRTCConnection.with_mqtt("mqtt://broker:1883", "my-robot", options=opts)
     """
 
     # ---- ICE / NAT traversal -------------------------------------------

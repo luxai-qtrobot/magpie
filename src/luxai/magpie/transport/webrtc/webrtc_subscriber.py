@@ -25,7 +25,7 @@ class WebRTCSubscriber(StreamReader):
 
     Usage::
 
-        conn = WebRTCConnection(signaling=signal_conn)
+        conn = WebRTCConnection.with_mqtt("mqtt://broker:1883", session_id="my-robot")
         conn.connect()
 
         # General data

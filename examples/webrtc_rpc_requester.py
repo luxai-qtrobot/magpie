@@ -12,11 +12,7 @@ Usage (run together with webrtc_rpc_responder.py):
 
 import time
 
-from luxai.magpie.transport import MqttConnection
-from luxai.magpie.transport.webrtc import (
-    WebRTCConnection, WebRTCRpcRequester,
-    WebRTCOptions,  # optional — uncomment opts block below to use
-)
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcRequester
 from luxai.magpie.utils import Logger
 
 
@@ -28,15 +24,9 @@ SERVICE_NAME = "robot/motion"                    # RPC service to call
 if __name__ == "__main__":
     Logger.set_level("DEBUG")
 
-    signal_conn = MqttConnection(BROKER_URI, client_id="magpie-webrtc-rpcreq")
-    if not signal_conn.connect(timeout=10.0):
-        raise SystemExit("Could not connect to MQTT broker.")
-
-    # optional WebRTC connection options
-    # opts = WebRTCOptions(
-    #     stun_servers=["stun:stun.l.google.com:19302"],
-    # )
-    conn = WebRTCConnection(signaling=signal_conn, session_id=SESSION_ID)
+    # For broker-less LAN use with_zmq() instead:
+    conn = WebRTCConnection.with_zmq("tcp://127.0.0.1:5555", SESSION_ID, bind=False)
+    # conn = WebRTCConnection.with_mqtt(BROKER_URI, SESSION_ID, client_id="magpie-webrtc-rpcreq")
     if not conn.connect():
         raise SystemExit("WebRTC handshake timed out.")
 
@@ -57,4 +47,3 @@ if __name__ == "__main__":
 
     client.close()
     conn.disconnect()
-    signal_conn.disconnect()

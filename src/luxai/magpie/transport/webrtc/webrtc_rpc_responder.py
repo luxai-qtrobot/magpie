@@ -30,7 +30,7 @@ class WebRTCRpcResponder(RpcResponder):
         def on_request(request):
             return {"status": "ok", "echo": request}
 
-        conn = WebRTCConnection(signaling=signal_conn)
+        conn = WebRTCConnection.with_mqtt("mqtt://broker:1883", session_id="my-robot")
         conn.connect()
 
         responder = WebRTCRpcResponder(conn, service_name="robot/motion")
