@@ -90,7 +90,7 @@ def main():
     signaler = build_signaler(args.signaling, args.session_id,
                               client_id="magpie-webrtc-pub",
                               timeout=args.timeout, bind=args.bind)
-    conn = WebRTCConnection(signaler=signaler)
+    conn = WebRTCConnection(signaler=signaler, reconnect=True)
     conn.connect()
 
     pub = WebRTCPublisher(conn)
