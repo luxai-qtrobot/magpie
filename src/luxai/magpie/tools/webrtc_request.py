@@ -23,7 +23,8 @@ except ImportError:
     sys.exit(1)
 
 from luxai.magpie.utils.logger import Logger
-from luxai.magpie.tools._webrtc_tools_common import build_signaler
+from luxai.magpie.tools._webrtc_tools_common import build_signaler, webrtc_options_type, build_webrtc_options
+from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type
 
 
 def _parse_payload(raw: str) -> Dict[str, Any]:
@@ -73,6 +74,12 @@ def main():
     parser.add_argument("--call-timeout", type=float, default=None,
                         metavar="SECS",
                         help="RPC call timeout in seconds. If omitted, waits forever.")
+    parser.add_argument("--mqtt-params", type=mqtt_params_type, default=None,
+                        metavar="JSON|@FILE",
+                        help="MQTT signaling options (auth, TLS, …) as JSON or @file.json.")
+    parser.add_argument("--webrtc-options", type=webrtc_options_type, default=None,
+                        metavar="JSON|@FILE",
+                        help="WebRTC options (TURN servers, codecs, …) as JSON or @file.json.")
     parser.add_argument("--pretty", action="store_true",
                         help="Pretty-print JSON response.")
     parser.add_argument("-v", "--verbose", action="store_true",
@@ -83,8 +90,10 @@ def main():
 
     signaler = build_signaler(args.signaling, args.session_id,
                               client_id="magpie-webrtc-req",
-                              timeout=args.timeout, bind=args.bind)
-    conn = WebRTCConnection(signaler=signaler, reconnect=True)
+                              timeout=args.timeout, bind=args.bind,
+                              mqtt_params=args.mqtt_params)
+    conn = WebRTCConnection(signaler=signaler, reconnect=True,
+                            options=build_webrtc_options(args.webrtc_options))
     conn.connect()
 
     client: Optional[WebRTCRpcRequester] = None

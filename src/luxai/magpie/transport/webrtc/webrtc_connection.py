@@ -319,6 +319,7 @@ class WebRTCConnection:
         *,
         client_id: Optional[str] = None,
         timeout: float = 10.0,
+        mqtt_options=None,
         reconnect: bool = False,
         options: Optional[WebRTCOptions] = None,
     ) -> "WebRTCConnection":
@@ -326,19 +327,21 @@ class WebRTCConnection:
         Create a ``WebRTCConnection`` using MQTT as the signaling transport.
 
         Args:
-            broker_url: MQTT broker URI, e.g. ``mqtt://broker.hivemq.com:1883``.
-            session_id: Shared rendezvous name — must match the remote peer.
-            client_id:  Optional MQTT client identifier.
-            timeout:    Broker connection timeout in seconds (default: 10).
-            reconnect:  Automatically reconnect on peer disconnect (default: False).
-            options:    Optional advanced WebRTC configuration.
+            broker_url:   MQTT broker URI, e.g. ``mqtt://broker.hivemq.com:1883``.
+            session_id:   Shared rendezvous name — must match the remote peer.
+            client_id:    Optional MQTT client identifier.
+            timeout:      Broker connection timeout in seconds (default: 10).
+            mqtt_options: Optional ``MqttOptions`` for auth, TLS, reconnect, etc.
+            reconnect:    Automatically reconnect on peer disconnect (default: False).
+            options:      Optional advanced WebRTC configuration.
 
         Raises:
             ImportError:     If ``paho-mqtt`` is not installed.
             ConnectionError: If the broker cannot be reached within *timeout*.
         """
         from .webrtc_signaler import MqttSignaler  # noqa: PLC0415
-        signaler = MqttSignaler(broker_url, session_id, client_id=client_id, timeout=timeout)
+        signaler = MqttSignaler(broker_url, session_id, client_id=client_id,
+                                timeout=timeout, options=mqtt_options)
         return cls(signaler=signaler, reconnect=reconnect, options=options)
 
     @classmethod

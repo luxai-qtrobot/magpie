@@ -95,6 +95,7 @@ class MqttSignaler(WebRtcSignaler):
         *,
         client_id: Optional[str] = None,
         timeout: float = 10.0,
+        options=None,
     ):
         """
         Args:
@@ -102,6 +103,7 @@ class MqttSignaler(WebRtcSignaler):
             session_id: Shared rendezvous name — must be identical on both peers.
             client_id:  Optional MQTT client identifier.
             timeout:    Broker connection timeout in seconds (default: 10).
+            options:    Optional ``MqttOptions`` for auth, TLS, reconnect, etc.
 
         Raises:
             ImportError:      If ``paho-mqtt`` is not installed.
@@ -119,7 +121,7 @@ class MqttSignaler(WebRtcSignaler):
         self._topic = f"magpie/webrtc/{session_id}/signal"
         self._callback: Optional[Callable[[bytes], None]] = None
 
-        self._conn = MqttConnection(broker_url, client_id=client_id)
+        self._conn = MqttConnection(broker_url, client_id=client_id, options=options)
         if not self._conn.connect(timeout=timeout):
             raise ConnectionError(
                 f"MqttSignaler: could not connect to MQTT broker '{broker_url}'"
