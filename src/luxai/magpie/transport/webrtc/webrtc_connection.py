@@ -607,6 +607,20 @@ class WebRTCConnection:
                 self._connected = True
                 self._connect_success = True
                 self._connect_event.set()
+                # Detect RTP media negotiation: if we have a local track and the
+                # connection succeeded, the remote peer accepted the video/audio
+                # m-line (even if it's receive-only on their side, e.g. a browser
+                # subscriber). Set negotiated so the publisher uses the RTP path.
+                if self._use_media_channels and self._video_track is not None:
+                    self._video_negotiated = True
+                    Logger.debug(
+                        f"WebRTCConnection({self._peer_id}): video RTP negotiated."
+                    )
+                if self._use_media_channels and self._audio_track is not None:
+                    self._audio_negotiated = True
+                    Logger.debug(
+                        f"WebRTCConnection({self._peer_id}): audio RTP negotiated."
+                    )
             elif state in ("failed", "disconnected", "closed"):
                 self._connected = False
                 if not self._connect_event.is_set():
@@ -938,7 +952,13 @@ class WebRTCConnection:
             Logger.debug(f"WebRTCConnection({self._peer_id}): media channel closed.")
 
     def _route_media_message(self, msg: dict) -> None:
-        """Dispatch an incoming magpie-media channel message via pub_callbacks[topic]."""
+        """Dispatch an incoming magpie-media channel message to video/audio callbacks.
+
+        magpie-media is the fallback path when use_media_channels=True but RTP was
+        not fully negotiated (e.g. connecting to a C++ peer).  Subscribers that
+        registered for VIDEO_TOPIC / AUDIO_TOPIC via add_video_callback /
+        add_audio_callback receive these frames.
+        """
         if not isinstance(msg, dict):
             return
         kind = msg.get("kind")
@@ -946,31 +966,33 @@ class WebRTCConnection:
         if kind not in ("video", "audio") or not isinstance(payload, dict):
             return
 
-        topic = msg.get("topic") or kind  # fall back to "video"/"audio" for older wire format
-
         from luxai.magpie.frames.frame import Frame
         try:
             frame = Frame.from_dict(payload)
             if frame is None:
                 Logger.warning(
                     f"WebRTCConnection({self._peer_id}): "
-                    f"Frame.from_dict returned None for {kind} media frame (topic='{topic}')"
+                    f"Frame.from_dict returned None for {kind} media frame"
                 )
                 return
             with self._routing_lock:
-                callbacks = list(self._pub_callbacks.get(topic, []))
+                if kind == "video":
+                    callbacks = list(self._video_callbacks)
+                else:
+                    callbacks = list(self._audio_callbacks)
+            topic = msg.get("topic") or kind
             for cb in callbacks:
                 try:
                     cb(frame, topic)
                 except Exception as e:
                     Logger.warning(
                         f"WebRTCConnection({self._peer_id}): "
-                        f"{kind} media callback error (topic='{topic}'): {e}"
+                        f"{kind} media callback error: {e}"
                     )
         except Exception as e:
             Logger.warning(
                 f"WebRTCConnection({self._peer_id}): "
-                f"{kind} media frame reconstruction error (topic='{topic}'): {e}"
+                f"{kind} media frame reconstruction error: {e}"
             )
 
     def send_media_frame(self, msg: dict) -> None:
