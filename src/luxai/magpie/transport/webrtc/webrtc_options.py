@@ -70,3 +70,16 @@ class WebRTCOptions:
 
     audio_bitrate: int = 96
     """Target audio bitrate in kbps (default 96)."""
+
+    use_media_channels: bool = True
+    """If ``True`` (default), use native WebRTC media tracks for
+    ``ImageFrameRaw`` / ``AudioFrameRaw`` when the remote peer supports them.
+    If ``False``, always use the data channel fallback regardless of remote
+    capabilities."""
+
+    media_channel_jpeg_quality: int = 80
+    """JPEG quality (1-100) used to compress ``ImageFrameRaw`` frames before
+    sending over the data channel when ``use_media_channels=False``.
+    Lower values reduce bandwidth at the cost of image quality.
+    ``ImageFrameJpeg`` frames are forwarded as-is without re-encoding.
+    Default is 80, which gives a good quality/size trade-off for robot video."""

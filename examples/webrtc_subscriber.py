@@ -8,7 +8,7 @@ Usage (run together with webrtc_publisher.py):
     Terminal 2 (operator): python examples/webrtc_subscriber.py
 """
 
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCSubscriber
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCSubscriber, WebRTCOptions
 from luxai.magpie.utils import Logger
 
 
@@ -20,8 +20,15 @@ TOPIC      = "robot/state"                    # topic to subscribe to
 if __name__ == "__main__":
     Logger.set_level("DEBUG")
 
-    # For broker-less LAN use with_zmq() instead:
-    conn = WebRTCConnection.with_zmq("tcp://127.0.0.1:5555", SESSION_ID, bind=False, reconnect=True)
+    # For broker-less LAN use with_zmq() instead:    
+    conn = WebRTCConnection.with_zmq("tcp://127.0.0.1:5555", 
+                                    SESSION_ID, 
+                                    bind=False,
+                                    reconnect=True,
+                                    options=WebRTCOptions(
+                                        stun_servers=[],            # disable stun server in local network for faster connections
+                                    )
+    )    
     #conn = WebRTCConnection.with_mqtt(BROKER_URI, SESSION_ID, client_id="magpie-webrtc-sub")
     
     if not conn.connect():

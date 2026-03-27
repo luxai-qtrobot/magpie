@@ -282,10 +282,15 @@ Signaling (SDP offer/answer + ICE candidates) is exchanged via a **`WebRtcSignal
 | `MqttSignaler` | Internet / cross-network — requires an MQTT broker |
 | `ZmqSignaler` | LAN / localhost — broker-less ZMQ PAIR socket |
 
-Role negotiation (offer vs answer) is fully automatic.  `WebRTCPublisher` routes internally based on frame type:
-- `ImageFrame*` → native WebRTC **video media track** (H.264/VP8, no msgpack overhead)
-- `AudioFrame*` → native WebRTC **audio media track** (Opus)
-- Everything else → **data channel** (msgpack-serialized, topic-routed)
+Role negotiation (offer vs answer) is fully automatic.  `WebRTCPublisher` routes internally based on frame type and the `use_media_channels` option (default `True`):
+
+| Frame type | `use_media_channels=True` | `use_media_channels=False` |
+|---|---|---|
+| `ImageFrame*` | Native **RTP video track** (H.264/VP8) — topic ignored | **Data channel**, JPEG-compressed, topic-routed |
+| `AudioFrame*` | Native **RTP audio track** (Opus) — topic ignored | **Data channel**, topic-routed |
+| Everything else | **Data channel**, topic-routed | **Data channel**, topic-routed |
+
+With `use_media_channels=False`, video and audio frames are topic-routed just like regular data, enabling **multiple simultaneous video/audio topics** (e.g. two cameras on different topics).  Frames are auto-compressed to JPEG before sending (quality configurable via `media_channel_jpeg_quality`).
 
 **Publisher (MQTT signaling — internet):**
 
@@ -331,10 +336,11 @@ conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="m
 conn.connect()
 
 sub  = WebRTCSubscriber(conn, topic="robot/state")                  # data channel topic
-vsub = WebRTCSubscriber(conn, topic=WebRTCSubscriber.VIDEO_TOPIC)   # video media track
+vsub = WebRTCSubscriber(conn, topic=WebRTCSubscriber.VIDEO_TOPIC)   # RTP video track (use_media_channels=True)
+# vsub = WebRTCSubscriber(conn, topic="/camera")                    # data channel topic (use_media_channels=False)
 
-data, _ = sub.read(timeout=5.0)
-frame, _ = vsub.read(timeout=5.0)   # returns ImageFrameRaw (BGR)
+data, _  = sub.read(timeout=5.0)
+frame, _ = vsub.read(timeout=5.0)   # ImageFrameRaw (RTP) or ImageFrameJpeg (data channel)
 
 sub.close()
 vsub.close()
@@ -411,6 +417,8 @@ opts = WebRTCOptions(
     audio_codec="opus",
     video_bitrate=2000,                                  # kbps
     audio_bitrate=96,                                    # kbps
+    use_media_channels=True,                             # False: route video/audio over data channel instead of RTP
+    media_channel_jpeg_quality=80,                       # JPEG quality (1-100) when use_media_channels=False
 )
 conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", "my-robot", options=opts)
 ```

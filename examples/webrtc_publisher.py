@@ -15,7 +15,7 @@ TIP: Change SESSION_ID to something unique to avoid collisions with other
 
 import time
 
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher, WebRTCOptions
 from luxai.magpie.utils import Logger
 
 
@@ -29,7 +29,15 @@ if __name__ == "__main__":
 
     # WebRTCConnection.with_mqtt() creates the MQTT signaling connection and
     # WebRTCConnection in one step.  For broker-less LAN use with_zmq() instead:
-    conn = WebRTCConnection.with_zmq("tcp://127.0.0.1:5555", SESSION_ID, bind=True, reconnect=True)
+    conn = WebRTCConnection.with_zmq("tcp://127.0.0.1:5555", 
+                                    SESSION_ID, 
+                                    bind=True,
+                                    reconnect=True,
+                                    options=WebRTCOptions(
+                                        stun_servers=[],            # disable stun server in local network for faster connections
+                                    ) 
+    )
+
     # conn = WebRTCConnection.with_mqtt(BROKER_URI, SESSION_ID)
 
     # optional WebRTC connection options:

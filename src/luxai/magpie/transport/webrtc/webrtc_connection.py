@@ -15,8 +15,11 @@ Architecture overview
   creates the SDP offer.
 * Media routing on the single ``"magpie"`` data channel uses a lightweight
   envelope: ``{"type": "pub"|"rpc_req"|"rpc_ack"|"rpc_rep", ...}``.
-* Video and audio ``ImageFrame*`` / ``AudioFrame*`` are streamed over
-  dedicated ``RTCVideoTrack`` / ``RTCAudioTrack`` for native codec support.
+* ``ImageFrame*`` / ``AudioFrame*`` are sent via native WebRTC media tracks when
+  both peers are configured with ``use_media_channels=True`` (the default) and
+  media tracks are successfully negotiated.  When the remote peer does not
+  support media tracks (e.g. the C++ port), frames fall back to the
+  ``"magpie-media"`` unreliable data channel.
 """
 
 import asyncio
@@ -196,6 +199,7 @@ class WebRTCConnection:
         self._signaler = signaler
         self._reconnect = reconnect
         self._options = options or WebRTCOptions()
+        self._use_media_channels: bool = self._options.use_media_channels
         self._serializer = MsgpackSerializer()
 
         # Session / peer identity
@@ -207,6 +211,9 @@ class WebRTCConnection:
         self._data_channel = None
         self._video_track: Optional[_MagpieVideoTrack] = None
         self._audio_track: Optional[_MagpieAudioTrack] = None
+        self._media_channel = None          # "magpie-media" unreliable DC
+        self._video_negotiated: bool = False # True if video media track established
+        self._audio_negotiated: bool = False # True if audio media track established
 
         # Asyncio loop in background thread
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -226,6 +233,12 @@ class WebRTCConnection:
         # Incoming video / audio frame callbacks
         self._video_callbacks: List[Callable] = []
         self._audio_callbacks: List[Callable] = []
+
+        # Outgoing media-over-data-channel send queue (maxsize=1 = drop stale frames).
+        # Populated from any thread via enqueue_media_send(); drained by
+        # _media_send_loop() running inside the asyncio loop.
+        self._media_send_queue: Optional[asyncio.Queue] = None
+        self._media_send_task: Optional[asyncio.Task] = None
 
         # Connection state
         self._connected = False
@@ -465,10 +478,23 @@ class WebRTCConnection:
         self._loop.run_forever()
 
     async def _close_async(self):
+        if self._media_send_task is not None:
+            self._media_send_task.cancel()
+            try:
+                await self._media_send_task
+            except asyncio.CancelledError:
+                pass
+            self._media_send_task = None
         if self._video_track:
             self._video_track.stop()
         if self._audio_track:
             self._audio_track.stop()
+        if self._media_channel:
+            try:
+                self._media_channel.close()
+            except Exception:
+                pass
+            self._media_channel = None
         if self._pc:
             await self._pc.close()
 
@@ -490,6 +516,11 @@ class WebRTCConnection:
 
         # Reset signaling state for fresh negotiation
         self._data_channel = None
+        self._media_channel = None
+        self._media_send_queue = None   # recreated in _connect_async
+        self._media_send_task = None    # recreated in _connect_async
+        self._video_negotiated = False
+        self._audio_negotiated = False
         self._remote_peer_id = None
         self._role_decided = False
         self._pending_ice_candidates = []
@@ -524,12 +555,23 @@ class WebRTCConnection:
         config = RTCConfiguration(iceServers=ice_servers)
         self._pc = RTCPeerConnection(configuration=config)
 
-        # Create outbound media tracks (always included so SDP is symmetric)
-        self._video_track = _MagpieVideoTrack(self._loop)
-        self._audio_track = _MagpieAudioTrack(self._loop)
+        # Create outbound media tracks only if media channels are enabled
+        if self._use_media_channels:
+            self._video_track = _MagpieVideoTrack(self._loop)
+            self._audio_track = _MagpieAudioTrack(self._loop)
+        else:
+            self._video_track = None
+            self._audio_track = None
 
         # Wire up RTCPeerConnection event handlers
         self._setup_pc_handlers()
+
+        # Media-over-data-channel send queue: maxsize=1 so only the latest
+        # frame is kept when the data channel can't keep up (same pattern as
+        # _MagpieVideoTrack._queue on the RTP path).
+        if not self._use_media_channels:
+            self._media_send_queue = asyncio.Queue(maxsize=1)
+            self._media_send_task = asyncio.ensure_future(self._media_send_loop())
 
         # Start the hello retry loop (runs concurrently in asyncio)
         asyncio.ensure_future(self._hello_loop())
@@ -589,21 +631,29 @@ class WebRTCConnection:
 
         @pc.on("datachannel")
         def on_datachannel(channel):
-            # Answer side receives the data channel created by the offerer
+            # Answer side receives the data channel(s) created by the offerer
             if channel.label == "magpie":
                 self._data_channel = channel
                 self._setup_data_channel(channel)
+            elif channel.label == "magpie-media" and self._use_media_channels:
+                self._media_channel = channel
+                self._setup_media_channel(channel)
 
         @pc.on("track")
         def on_track(track):
             if track.kind == "video":
+                # Only mark negotiated if WE have an outgoing track (use_media_channels=True)
+                if self._use_media_channels and self._video_track is not None:
+                    self._video_negotiated = True
                 asyncio.ensure_future(self._receive_video(track))
             elif track.kind == "audio":
+                if self._use_media_channels and self._audio_track is not None:
+                    self._audio_negotiated = True
                 asyncio.ensure_future(self._receive_audio(track))
 
     async def _create_offer(self):
         """Called when this peer wins role negotiation → becomes the offerer."""
-        # Create the shared data channel
+        # Create the shared data channel (reliable, ordered — for all non-media messages)
         dc_kwargs = {"ordered": self._options.data_channel_ordered}
         if self._options.data_channel_max_retransmits is not None:
             dc_kwargs["maxRetransmits"] = self._options.data_channel_max_retransmits
@@ -612,9 +662,21 @@ class WebRTCConnection:
         self._data_channel = dc
         self._setup_data_channel(dc)
 
-        # Add outbound media tracks
-        self._pc.addTrack(self._video_track)
-        self._pc.addTrack(self._audio_track)
+        # Create the "magpie-media" unreliable data channel only when media channels
+        # are enabled — it acts as a low-latency fallback when RTP is not negotiated.
+        # When use_media_channels=False, video/audio go through the reliable magpie
+        # data channel instead (avoiding aiortc issues with unordered/unreliable DCs).
+        if self._use_media_channels:
+            media_dc = self._pc.createDataChannel(
+                "magpie-media", ordered=False, maxRetransmits=0
+            )
+            self._media_channel = media_dc
+            self._setup_media_channel(media_dc)
+
+        # Add outbound media tracks only if configured to use media channels
+        if self._use_media_channels and self._video_track and self._audio_track:
+            self._pc.addTrack(self._video_track)
+            self._pc.addTrack(self._audio_track)
 
         # Create and send SDP offer
         offer = await self._pc.createOffer()
@@ -682,6 +744,36 @@ class WebRTCConnection:
                 Logger.warning(
                     f"WebRTCConnection({self._peer_id}): "
                     f"no handler registered for service '{service}'"
+                )
+
+        elif msg_type == "media":
+            topic = msg.get("topic", "")
+            payload = msg.get("payload")
+            if not topic or not isinstance(payload, dict):
+                return
+            from luxai.magpie.frames.frame import Frame
+            try:
+                frame = Frame.from_dict(payload)
+                if frame is None:
+                    Logger.warning(
+                        f"WebRTCConnection({self._peer_id}): "
+                        f"Frame.from_dict returned None for media message (topic='{topic}')"
+                    )
+                    return
+                with self._routing_lock:
+                    callbacks = list(self._pub_callbacks.get(topic, []))
+                for cb in callbacks:
+                    try:
+                        cb(frame, topic)
+                    except Exception as e:
+                        Logger.warning(
+                            f"WebRTCConnection({self._peer_id}): "
+                            f"media callback error for topic '{topic}': {e}"
+                        )
+            except Exception as e:
+                Logger.warning(
+                    f"WebRTCConnection({self._peer_id}): "
+                    f"media frame reconstruction error (topic='{topic}'): {e}"
                 )
 
         elif msg_type in ("rpc_ack", "rpc_rep"):
@@ -776,6 +868,137 @@ class WebRTCConnection:
             Logger.debug(f"WebRTCConnection({self._peer_id}): audio track ended.")
 
     # ------------------------------------------------------------------
+    # Internal: media channel (unreliable, for ImageFrameRaw / AudioFrameRaw)
+    # ------------------------------------------------------------------
+
+    def enqueue_media_send(self, payload: bytes) -> None:
+        """
+        Thread-safe: schedule *payload* to be sent on the data channel from
+        the asyncio loop.  Keeps only the latest frame — stale frames are
+        dropped so video never drifts behind.  Only used when
+        ``use_media_channels=False``.
+        """
+        if self._media_send_queue is None:
+            return
+
+        def _put():
+            q = self._media_send_queue
+            if q is None:
+                return
+            # Drain the stale entry (if any) before inserting the new one.
+            if not q.empty():
+                try:
+                    q.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+            try:
+                q.put_nowait(payload)
+            except asyncio.QueueFull:
+                pass  # should never happen after the drain above
+
+        self._loop.call_soon_threadsafe(_put)
+
+    async def _media_send_loop(self) -> None:
+        """Asyncio task: drain _media_send_queue and write to the data channel."""
+        while not self._closing:
+            try:
+                payload = await asyncio.wait_for(
+                    self._media_send_queue.get(), timeout=1.0
+                )
+            except asyncio.TimeoutError:
+                continue
+            if (self._data_channel is not None
+                    and self._data_channel.readyState == "open"):
+                try:
+                    self._data_channel.send(payload)
+                except Exception as e:
+                    Logger.warning(
+                        f"WebRTCConnection({self._peer_id}): "
+                        f"media send failed: {e}"
+                    )
+
+    def _setup_media_channel(self, dc) -> None:
+        @dc.on("open")
+        def on_open():
+            Logger.debug(f"WebRTCConnection({self._peer_id}): media channel open.")
+
+        @dc.on("message")
+        def on_message(data):
+            try:
+                msg = self._serializer.deserialize(data)
+                self._route_media_message(msg)
+            except Exception as e:
+                Logger.warning(
+                    f"WebRTCConnection({self._peer_id}): "
+                    f"media channel message error: {e}"
+                )
+
+        @dc.on("close")
+        def on_close():
+            Logger.debug(f"WebRTCConnection({self._peer_id}): media channel closed.")
+
+    def _route_media_message(self, msg: dict) -> None:
+        """Dispatch an incoming magpie-media channel message via pub_callbacks[topic]."""
+        if not isinstance(msg, dict):
+            return
+        kind = msg.get("kind")
+        payload = msg.get("payload")
+        if kind not in ("video", "audio") or not isinstance(payload, dict):
+            return
+
+        topic = msg.get("topic") or kind  # fall back to "video"/"audio" for older wire format
+
+        from luxai.magpie.frames.frame import Frame
+        try:
+            frame = Frame.from_dict(payload)
+            if frame is None:
+                Logger.warning(
+                    f"WebRTCConnection({self._peer_id}): "
+                    f"Frame.from_dict returned None for {kind} media frame (topic='{topic}')"
+                )
+                return
+            with self._routing_lock:
+                callbacks = list(self._pub_callbacks.get(topic, []))
+            for cb in callbacks:
+                try:
+                    cb(frame, topic)
+                except Exception as e:
+                    Logger.warning(
+                        f"WebRTCConnection({self._peer_id}): "
+                        f"{kind} media callback error (topic='{topic}'): {e}"
+                    )
+        except Exception as e:
+            Logger.warning(
+                f"WebRTCConnection({self._peer_id}): "
+                f"{kind} media frame reconstruction error (topic='{topic}'): {e}"
+            )
+
+    def send_media_frame(self, msg: dict) -> None:
+        """
+        Thread-safe: serialize *msg* and send it on the magpie-media channel.
+
+        Silently drops the message if the channel is not open.
+        """
+        if (self._closing or self._media_channel is None
+                or self._media_channel.readyState != "open"):
+            return
+        try:
+            payload = self._serializer.serialize(msg)
+            self._loop.call_soon_threadsafe(self._media_channel.send, payload)
+        except Exception as e:
+            Logger.warning(f"WebRTCConnection({self._peer_id}): send_media_frame failed: {e}")
+
+    @property
+    def video_negotiated(self) -> bool:
+        """True if a native video media track was established with the remote peer."""
+        return self._video_negotiated
+
+    @property
+    def audio_negotiated(self) -> bool:
+        """True if a native audio media track was established with the remote peer."""
+        return self._audio_negotiated
+
+    # ------------------------------------------------------------------
     # Internal: signaling
     # ------------------------------------------------------------------
 
@@ -851,9 +1074,10 @@ class WebRTCConnection:
             sdp = msg.get("sdp", "")
             Logger.debug(f"WebRTCConnection({self._peer_id}): received SDP offer.")
 
-            # Add outbound tracks before setting remote description
-            self._pc.addTrack(self._video_track)
-            self._pc.addTrack(self._audio_track)
+            # Add outbound tracks only if configured for media channels
+            if self._use_media_channels and self._video_track and self._audio_track:
+                self._pc.addTrack(self._video_track)
+                self._pc.addTrack(self._audio_track)
 
             await self._pc.setRemoteDescription(
                 RTCSessionDescription(sdp=sdp, type="offer")
