@@ -13,7 +13,7 @@ Usage (run together with webrtc_video_subscriber.py):
 import cv2
 
 from luxai.magpie.frames.image import ImageFrameRaw
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher, WebRTCOptions, WebRTCSubscriber
 from luxai.magpie.utils import Logger
 
 
@@ -25,9 +25,18 @@ if __name__ == "__main__":
     Logger.set_level("DEBUG")
 
     # For broker-less LAN use with_zmq() instead:
-    conn = WebRTCConnection.with_zmq("tcp://127.0.0.1:5555", SESSION_ID, bind=True)
+    conn = WebRTCConnection.with_zmq(
+        "tcp://127.0.0.1:5555", 
+        SESSION_ID, 
+        bind=True, 
+        reconnect=True, 
+        options=WebRTCOptions(
+            stun_servers=[],            # disable stun server in local network for faster connections
+            use_media_channels=True,    # use native webrtc media channels for video/audio frames        
+            ) 
+        )
+    
     # conn = WebRTCConnection.with_mqtt(BROKER_URI, SESSION_ID, client_id="magpie-webrtc-vidpub")
-
     # optional WebRTC connection options:
     # from luxai.magpie.transport.webrtc import WebRTCOptions
     # conn = WebRTCConnection.with_mqtt(
@@ -58,7 +67,7 @@ if __name__ == "__main__":
                     data=cv_image.tobytes(), format="raw",
                     width=w, height=h, channels=c, pixel_format="BGR",
                 )
-                pub.write(frame)
+                pub.write(frame)  # topic is ignored for media frames when use_media_channels=True
         except KeyboardInterrupt:
             Logger.info("stopping...")
             break

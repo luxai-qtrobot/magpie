@@ -13,15 +13,20 @@ class WebRTCSubscriber(StreamReader):
     Receives frames or data published by the remote peer over a shared
     ``WebRTCConnection``.  The *topic* parameter controls routing:
 
-    * ``"video"`` (or the special sentinel ``WebRTCSubscriber.VIDEO_TOPIC``) →
-      subscribes to the video media track; each ``read()`` returns an
-      ``ImageFrameRaw`` with raw BGR pixel data.
-    * ``"audio"`` (or ``WebRTCSubscriber.AUDIO_TOPIC``) →
-      subscribes to the audio media track; each ``read()`` returns an
-      ``AudioFrameRaw`` with PCM data.
-    * Any other topic →
-      subscribes to that topic on the ``"magpie"`` data channel; ``read()``
-      returns the deserialized payload.
+    **use_media_channels=True** (default):
+
+    * ``VIDEO_TOPIC`` (``"video"``) → RTP video track; ``read()`` returns
+      ``ImageFrameRaw``.  Only one video topic is supported.
+    * ``AUDIO_TOPIC`` (``"audio"``) → RTP audio track; ``read()`` returns
+      ``AudioFrameRaw``.  Only one audio topic is supported.
+    * Any other string → data channel topic (regular pub/sub data).
+
+    **use_media_channels=False**:
+
+    * Any string, including ``VIDEO_TOPIC`` / ``AUDIO_TOPIC`` → fully
+      topic-routed via the ``magpie-media`` unreliable data channel.
+      Multiple video and audio topics are supported simultaneously.
+      ``read()`` returns whatever frame type the publisher wrote to that topic.
 
     Usage::
 
@@ -52,18 +57,33 @@ class WebRTCSubscriber(StreamReader):
         """
         Args:
             connection: Shared ``WebRTCConnection`` instance.
-            topic: Topic to subscribe to, or ``"video"`` / ``"audio"`` for
-                   media tracks.
+            topic: Topic to subscribe to.
+
+                   When ``use_media_channels=True``:
+                     - ``VIDEO_TOPIC`` (``"video"``) → RTP video track.
+                     - ``AUDIO_TOPIC`` (``"audio"``) → RTP audio track.
+                     - Any other string → data channel topic.
+
+                   When ``use_media_channels=False``:
+                     - Any string (including ``VIDEO_TOPIC`` / ``AUDIO_TOPIC``) →
+                       data channel topic; video/audio frames are topic-routed
+                       just like regular data, enabling multiple video/audio topics.
             queue_size: Size of the internal reader queue.
         """
         self._connection = connection
         self._topic = topic
         self._msg_queue: Queue = Queue()
 
-        # Register with the connection before starting the StreamReader thread
-        if topic == self.VIDEO_TOPIC:
+        use_media = connection._use_media_channels
+
+        # Register with the connection before starting the StreamReader thread.
+        # When use_media_channels=True, VIDEO_TOPIC/AUDIO_TOPIC tap the RTP track
+        # callbacks.  For everything else (including all topics when
+        # use_media_channels=False) we register as a pub callback so that
+        # magpie-media frames are routed by topic just like regular data.
+        if use_media and topic == self.VIDEO_TOPIC:
             self._connection.add_video_callback(self._on_media_frame)
-        elif topic == self.AUDIO_TOPIC:
+        elif use_media and topic == self.AUDIO_TOPIC:
             self._connection.add_audio_callback(self._on_media_frame)
         else:
             self._connection.add_pub_callback(topic, self._on_data_message)
@@ -97,9 +117,10 @@ class WebRTCSubscriber(StreamReader):
             )
 
     def _transport_close(self):
-        if self._topic == self.VIDEO_TOPIC:
+        use_media = self._connection._use_media_channels
+        if use_media and self._topic == self.VIDEO_TOPIC:
             self._connection.remove_video_callback(self._on_media_frame)
-        elif self._topic == self.AUDIO_TOPIC:
+        elif use_media and self._topic == self.AUDIO_TOPIC:
             self._connection.remove_audio_callback(self._on_media_frame)
         else:
             self._connection.remove_pub_callback(self._topic, self._on_data_message)
