@@ -94,10 +94,9 @@ def main():
                               mqtt_params=args.mqtt_params)
     conn = WebRTCConnection(signaler=signaler, reconnect=True,
                             options=build_webrtc_options(args.webrtc_options))
-    conn.connect()
-
     client: Optional[WebRTCRpcRequester] = None
     try:
+        conn.connect()
         client = WebRTCRpcRequester(conn, service_name=args.service)
         response = client.call(args.payload, timeout=args.call_timeout)
 

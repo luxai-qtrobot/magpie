@@ -100,12 +100,12 @@ def main():
                               mqtt_params=args.mqtt_params)
     conn = WebRTCConnection(signaler=signaler, reconnect=True,
                             options=build_webrtc_options(args.webrtc_options))
-    conn.connect()
 
     pub = WebRTCPublisher(conn)
 
     published = 0
     try:
+        conn.connect()
         if args.rate is None:
             payload = args.data if args.raw else DictFrame(value=args.data).to_dict()
             pub.write(payload, topic=args.topic)

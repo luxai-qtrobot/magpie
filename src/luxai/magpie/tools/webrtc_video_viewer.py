@@ -72,8 +72,6 @@ def main():
                               mqtt_params=args.mqtt_params)
     conn = WebRTCConnection(signaler=signaler, reconnect=True,
                             options=build_webrtc_options(args.webrtc_options))
-    conn.connect()
-
     sub = WebRTCSubscriber(conn, topic=WebRTCSubscriber.VIDEO_TOPIC)
     Logger.info(f"magpie-video-viewer-webrtc: waiting for video on session '{args.session_id}'")
 
@@ -82,6 +80,7 @@ def main():
     window_name = f"WebRTC — {args.session_id}"
 
     try:
+        conn.connect()
         while True:
             try:
                 frame, _ = sub.read(timeout=2.0)

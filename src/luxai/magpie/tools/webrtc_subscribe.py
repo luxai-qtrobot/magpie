@@ -71,8 +71,6 @@ def main():
                               mqtt_params=args.mqtt_params)
     conn = WebRTCConnection(signaler=signaler, reconnect=True,
                             options=build_webrtc_options(args.webrtc_options))
-    conn.connect()
-
     sub = WebRTCSubscriber(conn, topic=args.topic)
 
     msg_count = 0
@@ -82,6 +80,7 @@ def main():
     Logger.info(f"magpie-subscribe-webrtc: subscribed to '{args.topic}' on session '{args.session_id}'")
 
     try:
+        conn.connect()
         while True:
             try:
                 data, _ = sub.read(timeout=1.0)
