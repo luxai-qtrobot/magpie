@@ -295,7 +295,15 @@ class WebRTCConnection:
         # Kick off the async setup
         asyncio.run_coroutine_threadsafe(self._connect_async(), self._loop)
 
-        connected = self._connect_event.wait(timeout=timeout)
+        import time as _time
+        deadline = _time.monotonic() + timeout if timeout is not None else None
+        connected = False
+        while not connected:
+            connected = self._connect_event.wait(timeout=0.5)
+            if connected:
+                break
+            if deadline is not None and _time.monotonic() >= deadline:
+                break
         if not connected:
             Logger.warning(
                 f"WebRTCConnection({self._peer_id}): "

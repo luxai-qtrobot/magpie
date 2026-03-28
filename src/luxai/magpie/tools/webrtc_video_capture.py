@@ -90,13 +90,12 @@ def main():
                               mqtt_params=args.mqtt_params)
     conn = WebRTCConnection(signaler=signaler, reconnect=True,
                             options=build_webrtc_options(args.webrtc_options))
-    conn.connect()
-
     pub = WebRTCPublisher(conn)
     Logger.info(f"magpie-video-capture-webrtc: streaming on session '{args.session_id}'")
 
     frame_period = 1.0 / max(1, args.framerate)
     try:
+        conn.connect()
         while True:
             t = time.time()
             ret, cv_image = cap.read()

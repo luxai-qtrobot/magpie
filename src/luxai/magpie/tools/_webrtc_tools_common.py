@@ -62,7 +62,8 @@ def build_webrtc_options(d: Optional[dict]):
             "video_codec":                 "H264",
             "audio_codec":                 "opus",
             "video_bitrate":               2000,
-            "audio_bitrate":               96
+            "audio_bitrate":               96,
+            "use_media_channels":          false
         }
     """
     from luxai.magpie.transport.webrtc import WebRTCOptions, WebRTCTurnServer  # noqa: PLC0415
@@ -97,6 +98,8 @@ def build_webrtc_options(d: Optional[dict]):
         kwargs["video_bitrate"] = d["video_bitrate"]
     if "audio_bitrate" in d:
         kwargs["audio_bitrate"] = d["audio_bitrate"]
+    if "use_media_channels" in d:
+        kwargs["use_media_channels"] = d["use_media_channels"]
 
     return WebRTCOptions(**kwargs)
 
