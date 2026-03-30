@@ -613,8 +613,9 @@ class WebRTCConnection:
             Logger.debug(f"WebRTCConnection({self._peer_id}): state → {state}")
             if state == "connected":
                 self._connected = True
-                self._connect_success = True
-                self._connect_event.set()
+                # _connect_event is set in _setup_data_channel (on_open or
+                # immediate check) so connect() only returns once the data
+                # channel is ready to send.
                 # Detect RTP media negotiation: if we have a local track and the
                 # connection succeeded, the remote peer accepted the video/audio
                 # m-line (even if it's receive-only on their side, e.g. a browser
@@ -719,6 +720,16 @@ class WebRTCConnection:
         @dc.on("open")
         def on_open():
             Logger.debug(f"WebRTCConnection({self._peer_id}): data channel open.")
+            if not self._connect_event.is_set():
+                self._connect_success = True
+                self._connect_event.set()
+
+        # Answerer: on_datachannel may fire when the channel is already open,
+        # in which case on_open never fires — handle it immediately.
+        if dc.readyState == "open":
+            if not self._connect_event.is_set():
+                self._connect_success = True
+                self._connect_event.set()
 
         @dc.on("message")
         def on_message(data):
