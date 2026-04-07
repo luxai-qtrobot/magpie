@@ -44,6 +44,14 @@ Originally developed at **[LuxAI](https://luxai.com)** for the [QTrobot](https:/
 
 ---
 
+## Architecture
+
+MAGPIE is built around four abstract base classes — `StreamWriter`, `StreamReader`, `RpcRequester`, `RpcResponder` — that absorb all threading, queuing, and lifecycle complexity. Transport implementations only fill in two or three pure transport methods; everything else is handled by the base classes. This makes adding a new transport a matter of minutes, not days, and means user code is completely transport-agnostic.
+
+For the full architecture diagram, layer-by-layer breakdown, and guides for extending MAGPIE with new transports, custom serializers, and custom frame types, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
 ## Installation
 
 ### Core (pub/sub + RPC only)

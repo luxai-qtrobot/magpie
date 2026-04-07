@@ -15,22 +15,8 @@ A robot streaming video over ZeroMQ on a local network and the same robot stream
 ║              write(frame, topic)              read()              call(request)              handle_once(handler)                ║
 ╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
                           │                      │                        │                            │
-                          ▼                      ▼                        ▼                            ▼
-╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
-║                                          NODE ABSTRACTIONS (optional)                                                            ║
-║                                                                                                                                  ║
-║        ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐                                               ║
-║        │  SourceNode  │   │   SinkNode   │   │ ProcessNode  │   │  ServerNode  │                                               ║
-║        └──────┬───────┘   └──────┬───────┘   └──────┬───────┘   └──────┬───────┘                                               ║
-║               └──────────────────┴──────────────────┴──────────────────┘                                                        ║
-║                                                    │                                                                             ║
-║                                             ┌──────┴───────┐                                                                    ║
-║                                             │   BaseNode   │                                                                    ║
-║                                             └──────────────┘                                                                    ║
-╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
-                                                       │
-                          ┌────────────────────────────┼────────────────────────────┐
-                          ▼                            ▼                            ▼
+          ┌───────────────┴──────────────────────┴────────────────────────┴────────────────────────────┘
+          ▼                            ▼                            ▼
 ╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
 ║                                       TRANSPORT ABSTRACTION  (Abstract Base Classes)                                             ║
 ║                                                                                                                                  ║
@@ -92,19 +78,20 @@ A robot streaming video over ZeroMQ on a local network and the same robot stream
 
 
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  CROSS-CUTTING CONCERNS                                                                                                          │
+│  CROSS-CUTTING CONCERNS  (transport-agnostic, all optional)                                                                      │
 │                                                                                                                                  │
-│  FRAMES                                               SERIALIZATION                    DISCOVERY                                │
-│  ┌────────────────────────────────────────────┐      ┌──────────────────────────┐     ┌──────────────────────────────────────┐  │
-│  │                   Frame (base)             │      │  BaseSerializer  (ABC)   │     │  ZconfDiscovery  (mDNS/Zeroconf)     │  │
-│  │ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ │      │  MsgpackSerializer       │     │  McastDiscovery  (multicast)         │  │
-│  │  ImageFrameRaw  ImageFrameCV  ImageFrameJpeg│      │  (pluggable)             │     └──────────────────────────────────────┘  │
-│  │  AudioFrameRaw  AudioFrameFlac              │      └──────────────────────────┘                                               │
-│  │ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ │                                                                                 │
-│  │  BoolFrame  IntFrame  FloatFrame            │                                                                                 │
-│  │  StringFrame  BytesFrame                   │                                                                                 │
-│  │  ListFrame   DictFrame                     │                                                                                 │
-│  └────────────────────────────────────────────┘                                                                                 │
+│  NODES                                    FRAMES                            SERIALIZATION          DISCOVERY                    │
+│  ┌──────────────────────────────────┐    ┌──────────────────────────────┐  ┌──────────────────┐  ┌──────────────────────────┐  │
+│  │  BaseNode                        │    │  Frame (base)                │  │ BaseSerializer   │  │ ZconfDiscovery           │  │
+│  │  ├─ SourceNode  (wraps Writer)   │    │  ├─ ImageFrameRaw            │  │ (ABC)            │  │ (mDNS/Zeroconf)          │  │
+│  │  ├─ SinkNode    (wraps Reader)   │    │  ├─ ImageFrameCV             │  │ MsgpackSerializer│  ├──────────────────────────┤  │
+│  │  ├─ ProcessNode (Reader+Writer)  │    │  ├─ ImageFrameJpeg           │  │ (pluggable)      │  │ McastDiscovery           │  │
+│  │  └─ ServerNode  (wraps Responder)│    │  ├─ AudioFrameRaw            │  └──────────────────┘  │ (multicast)              │  │
+│  │                                  │    │  ├─ AudioFrameFlac           │                        └──────────────────────────┘  │
+│  │  thread mgmt · pause/resume      │    │  ├─ BoolFrame  IntFrame      │                                                      │
+│  │  lifecycle · graceful shutdown   │    │  ├─ FloatFrame StringFrame   │                                                      │
+│  └──────────────────────────────────┘    │  └─ BytesFrame ListFrame … │                                                      │
+│                                          └──────────────────────────────┘                                                      │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -122,17 +109,6 @@ The top of the stack. The user works with exactly four methods regardless of whi
 | RPC | `requester.call(request, timeout)` | `responder.handle_once(handler, timeout)` |
 
 No transport-specific code ever leaks into user space.
-
----
-
-### Node Abstractions (optional)
-
-`SourceNode`, `SinkNode`, `ProcessNode`, and `ServerNode` are higher-level building blocks for applications that need managed threads, lifecycle control (start/pause/resume/stop), and clean shutdown. They are entirely optional — you can use the transport classes directly.
-
-All four extend `BaseNode`, which handles:
-- Background thread management
-- Pause / resume via threading events
-- Graceful termination with timeout
 
 ---
 
@@ -185,6 +161,8 @@ The actual bytes on the network:
 ---
 
 ### Cross-Cutting Concerns
+
+**Nodes** — optional high-level wrappers that add thread management, lifecycle control, and pause/resume support on top of the raw transport primitives. `SourceNode` wraps a `StreamWriter`, `SinkNode` wraps a `StreamReader`, `ProcessNode` combines both, and `ServerNode` wraps an `RpcResponder`. All four are transport-agnostic — the same node class works identically whether the underlying transport is ZMQ, MQTT, or WebRTC.
 
 **Frames** — typed data containers that flow through every layer unchanged. All frames extend `Frame`, which provides automatic subclass registration for polymorphic serialization/deserialization. Adding a new frame type requires only a `@dataclass` with `Frame` as the base class.
 
