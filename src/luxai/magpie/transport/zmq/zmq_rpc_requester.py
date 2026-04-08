@@ -28,7 +28,7 @@ class ZMQRpcRequester(RpcRequester):
     def __init__(
         self,
         endpoint: str,
-        serializer: MsgpackSerializer = MsgpackSerializer(),
+        serializer=None,
         name: str = None,
         identity: bytes = None,
         ack_timeout: float = 2.0
@@ -37,7 +37,7 @@ class ZMQRpcRequester(RpcRequester):
         Initializes the ZMQRpcRequester.
         """
         self.endpoint = endpoint
-        self.serializer = serializer
+        self.serializer = serializer or MsgpackSerializer()
         self.ack_timeout = ack_timeout
 
         # Use shared context for inproc, otherwise create a new one

@@ -906,14 +906,20 @@ class WebRTCConnection:
     # Internal: media channel (unreliable, for ImageFrameRaw / AudioFrameRaw)
     # ------------------------------------------------------------------
 
-    def enqueue_media_send(self, payload: bytes) -> None:
+    def enqueue_media_send(self, msg: dict) -> None:
         """
-        Thread-safe: schedule *payload* to be sent on the data channel from
-        the asyncio loop.  Keeps only the latest frame — stale frames are
-        dropped so video never drifts behind.  Only used when
+        Thread-safe: serialize *msg* and schedule it to be sent on the data
+        channel from the asyncio loop.  Keeps only the latest frame — stale
+        frames are dropped so video never drifts behind.  Only used when
         ``use_media_channels=False``.
         """
         if self._media_send_queue is None:
+            return
+
+        try:
+            payload = self._serializer.serialize(msg)
+        except Exception as e:
+            Logger.warning(f"WebRTCConnection({self._peer_id}): media serialize error: {e}")
             return
 
         def _put():
