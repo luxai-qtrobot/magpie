@@ -19,7 +19,7 @@ class ZMQSubscriber(StreamReader):
         self,
         endpoint: str,
         topic: Union[str, List[str]] = '',
-        serializer=MsgpackSerializer(),
+        serializer=None,
         queue_size: int = 10,
         bind: bool = False,
         delivery: str = "reliable",   # "reliable" or "latest"
@@ -38,7 +38,7 @@ class ZMQSubscriber(StreamReader):
                                 - "latest": tuned for real-time streams (e.g. video)            
         """
         self.endpoint = endpoint
-        self.serializer = serializer
+        self.serializer = serializer or MsgpackSerializer()
         self.delivery = delivery
 
         # Normalize topics

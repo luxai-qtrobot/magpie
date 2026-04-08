@@ -17,7 +17,7 @@ class ZMQPublisher(StreamWriter):
     def __init__(
         self,
         endpoint: str,
-        serializer=MsgpackSerializer(),
+        serializer=None,
         queue_size: int = 10,
         bind: bool = True,
         delivery: str = "reliable",     # "reliable" or "latest"
@@ -33,7 +33,7 @@ class ZMQPublisher(StreamWriter):
                             - "latest": optimized for real-time streams
         """
         self.endpoint = endpoint
-        self.serializer = serializer
+        self.serializer = serializer or MsgpackSerializer()
         self.delivery = delivery
         self.bind = bind
 
