@@ -392,6 +392,8 @@ class WebRTCConnection:
         """
         from .webrtc_signaler import ZmqSignaler  # noqa: PLC0415
         signaler = ZmqSignaler(endpoint, session_id, bind=bind)
+        if options is None:
+            options = WebRTCOptions(stun_servers=[])
         return cls(signaler=signaler, reconnect=reconnect, options=options)
 
     # ------------------------------------------------------------------
