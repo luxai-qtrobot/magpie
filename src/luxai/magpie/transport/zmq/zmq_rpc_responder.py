@@ -18,7 +18,7 @@ class ZMQRpcResponder(RpcResponder):
     def __init__(
         self,
         endpoint: str,
-        serializer: MsgpackSerializer = MsgpackSerializer(),
+        serializer=None,
         name: str = None,
         bind: bool = True
     ):
@@ -37,7 +37,7 @@ class ZMQRpcResponder(RpcResponder):
                                    If False, it will connect() instead.
         """
         self.endpoint = endpoint
-        self.serializer = serializer
+        self.serializer = serializer or MsgpackSerializer()
 
         # Use shared context for inproc, otherwise create a new one
         self.context = zmq.Context.instance() if endpoint.startswith("inproc:") else zmq.Context()

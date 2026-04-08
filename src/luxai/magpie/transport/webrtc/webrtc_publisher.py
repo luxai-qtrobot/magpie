@@ -1,6 +1,5 @@
 from luxai.magpie.transport.stream_writer import StreamWriter
 from luxai.magpie.utils.logger import Logger
-from luxai.magpie.serializer.msgpack_serializer import MsgpackSerializer
 from .webrtc_connection import WebRTCConnection
 
 
@@ -40,18 +39,14 @@ class WebRTCPublisher(StreamWriter):
     def __init__(
         self,
         connection: WebRTCConnection,
-        serializer=None,
         queue_size: int = 10,
     ):
         """
         Args:
             connection: Shared ``WebRTCConnection`` instance.
-            serializer: Serializer for data channel messages.
-                        Defaults to ``MsgpackSerializer``.
             queue_size: Size of the internal write-ahead queue.
         """
         self._connection = connection
-        self._serializer = serializer or MsgpackSerializer()
 
         super().__init__(name="WebRTCPublisher", queue_size=queue_size)
         Logger.debug("WebRTCPublisher: ready.")
@@ -132,12 +127,11 @@ class WebRTCPublisher(StreamWriter):
             # use_media_channels=False — compress to JPEG then send through
             # the magpie data channel via the drop-stale queue.
             jpeg_frame = self._ensure_jpeg(frame)
-            payload = self._serializer.serialize({
+            self._connection.enqueue_media_send({
                 "type":    "media",
                 "topic":   topic or self._VIDEO_TOPIC,
                 "payload": jpeg_frame.to_dict(),
             })
-            self._connection.enqueue_media_send(payload)
 
     def _write_audio(self, frame: "AudioFrameRaw", topic: str):
         """Send an audio frame: RTP track → magpie-media (unreliable) → magpie (reliable)."""
@@ -156,12 +150,11 @@ class WebRTCPublisher(StreamWriter):
             except Exception as e:
                 Logger.warning(f"WebRTCPublisher: magpie-media audio send failed: {e}")
         else:
-            payload = self._serializer.serialize({
+            self._connection.enqueue_media_send({
                 "type":    "media",
                 "topic":   topic or self._AUDIO_TOPIC,
                 "payload": frame.to_dict(),
             })
-            self._connection.enqueue_media_send(payload)
 
     def _write_data(self, data: object, topic: str):
         """Serialize and send arbitrary data over the data channel."""
