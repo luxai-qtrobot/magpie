@@ -133,12 +133,23 @@ class WebRTCPublisher(StreamWriter):
                 "payload": jpeg_frame.to_dict(),
             })
 
+    _audio_logged = False  # log audio frame properties once per publisher instance
+
     def _write_audio(self, frame: "AudioFrameRaw", topic: str):
         """Send an audio frame: RTP track → magpie-media (unreliable) → magpie (reliable)."""
         track = self._connection.audio_track
         if self._connection.audio_negotiated and track is not None:
             try:
                 av_frame = self._audio_frame_to_av(frame)
+                if not self.__class__._audio_logged:
+                    self.__class__._audio_logged = True
+                    Logger.debug(
+                        f"WebRTCPublisher audio: in=({frame.sample_rate}Hz, "
+                        f"{frame.channels}ch, {frame.bit_depth}bit, "
+                        f"{len(frame.data)}bytes={len(frame.data)//(frame.channels*frame.bit_depth//8)}samples) "
+                        f"→ av=({av_frame.sample_rate}Hz, "
+                        f"{av_frame.samples}samples, fmt={av_frame.format.name})"
+                    )
                 track.push(av_frame)
             except Exception as e:
                 Logger.warning(f"WebRTCPublisher: audio frame conversion failed: {e}")

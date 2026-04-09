@@ -881,8 +881,20 @@ class WebRTCConnection:
                     # s16 packed → shape (1, frames*channels); s16p planar → (channels, frames)
                     raw = av_frame.to_ndarray()
                     samples = raw.flatten().astype(np.int16)
-                    if num_channels > 1:
-                        # ensure interleaved layout (frames, channels) flatten order preserved
+                    # Opus always decodes to stereo even for mono input.
+                    # Detect mono by checking whether both channels are identical
+                    # and collapse to mono to avoid the sender's channel count
+                    # being misreported to the player.
+                    if num_channels == 2:
+                        n = (len(samples) // 2) * 2
+                        samples = samples[:n]
+                        ch_l = samples[0::2]
+                        ch_r = samples[1::2]
+                        if np.array_equal(ch_l, ch_r):
+                            # Both channels identical → was originally mono
+                            samples = ch_l
+                            num_channels = 1
+                    elif num_channels > 2:
                         n = (len(samples) // num_channels) * num_channels
                         samples = samples[:n]
                     frame = AudioFrameRaw(
