@@ -273,16 +273,17 @@ class WebRTCPublisher(StreamWriter):
         dtype = np.int16 if frame.bit_depth == 16 else np.int32
         samples = np.frombuffer(frame.data, dtype=dtype)
 
+        # aiortc's opus encoder requires packed (interleaved) s16/s32 format,
+        # not planar s16p/s32p.  Keep data interleaved and reshape to (1, N).
         if frame.channels == 2:
-            # Interleaved PCM → planar (channels, samples)
-            num_samples = len(samples) // 2
-            samples = samples[: num_samples * 2].reshape(num_samples, 2).T
+            num_samples = (len(samples) // 2) * 2   # truncate to even length
+            samples = samples[:num_samples].reshape(1, -1)
             layout = "stereo"
-            av_fmt = "s16p" if frame.bit_depth == 16 else "s32p"
         else:
+            samples = samples.reshape(1, -1)
             layout = "mono"
-            av_fmt = "s16" if frame.bit_depth == 16 else "s32"
 
+        av_fmt = "s16" if frame.bit_depth == 16 else "s32"
         av_frame = av.AudioFrame.from_ndarray(samples, format=av_fmt, layout=layout)
         av_frame.sample_rate = frame.sample_rate
         return av_frame

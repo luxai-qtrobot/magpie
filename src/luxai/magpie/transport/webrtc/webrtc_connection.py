@@ -118,6 +118,7 @@ class _MagpieAudioTrack(AudioStreamTrack):
         self._loop = loop
         self._queue: asyncio.Queue = asyncio.Queue()
         self._closed = False
+        self._pts = 0
 
     def push(self, av_frame: "av.AudioFrame") -> None:
         """Thread-safe: enqueue an av.AudioFrame for transmission."""
@@ -125,12 +126,14 @@ class _MagpieAudioTrack(AudioStreamTrack):
             self._loop.call_soon_threadsafe(self._queue.put_nowait, av_frame)
 
     async def recv(self) -> "av.AudioFrame":
-        pts, time_base = await self.next_timestamp()
+        import fractions
         while not self._closed:
             try:
                 frame = self._queue.get_nowait()
-                frame.pts = pts
-                frame.time_base = time_base
+                # Assign monotonically increasing pts in sample units
+                frame.pts = self._pts
+                frame.time_base = fractions.Fraction(1, frame.sample_rate)
+                self._pts += frame.samples
                 return frame
             except asyncio.QueueEmpty:
                 await asyncio.sleep(0.005)
@@ -871,15 +874,20 @@ class WebRTCConnection:
         try:
             while not self._closing:
                 av_frame = await track.recv()
+                num_channels = len(av_frame.layout.channels)
                 try:
                     import numpy as np
-                    samples = av_frame.to_ndarray(format="s16")
-                    # Planar (channels, samples) → interleaved
-                    if samples.ndim == 2:
-                        samples = samples.T.flatten()
+                    # to_ndarray() on AudioFrame returns the raw array without format arg.
+                    # s16 packed → shape (1, frames*channels); s16p planar → (channels, frames)
+                    raw = av_frame.to_ndarray()
+                    samples = raw.flatten().astype(np.int16)
+                    if num_channels > 1:
+                        # ensure interleaved layout (frames, channels) flatten order preserved
+                        n = (len(samples) // num_channels) * num_channels
+                        samples = samples[:n]
                     frame = AudioFrameRaw(
                         data=samples.tobytes(),
-                        channels=av_frame.channels,
+                        channels=num_channels,
                         sample_rate=av_frame.sample_rate,
                         bit_depth=16,
                         format="PCM",
