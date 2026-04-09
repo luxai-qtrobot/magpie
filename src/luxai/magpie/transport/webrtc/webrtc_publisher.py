@@ -214,15 +214,19 @@ class WebRTCPublisher(StreamWriter):
         fmt = (frame.format or "").lower()
 
         if fmt in ("jpeg", ".jpg", ".jpeg"):
-            # Prefer simplejpeg; fall back to OpenCV
+            # Decode directly to RGB — pixel_format describes the pre-encode source,
+            # not the decoded output, so we request RGB from the decoder directly to
+            # avoid a conditional flip that would be skipped for non-BGR sources
+            # (e.g. RealSense sets pixel_format="RGB") causing a blue-tint artifact.
             try:
                 from simplejpeg import decode_jpeg
-                arr = decode_jpeg(frame.data, colorspace="BGR")
+                arr = decode_jpeg(frame.data, colorspace="RGB")
             except ImportError:
                 import cv2
                 arr = cv2.imdecode(
                     np.frombuffer(frame.data, np.uint8), cv2.IMREAD_COLOR
                 )
+                arr = arr[:, :, ::-1]   # cv2 gives BGR → RGB
         elif fmt in ("raw", "") and frame.width and frame.height:
             arr = np.frombuffer(frame.data, dtype=np.uint8).reshape(
                 frame.height, frame.width, frame.channels
