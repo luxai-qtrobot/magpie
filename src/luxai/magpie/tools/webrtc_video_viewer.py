@@ -71,7 +71,7 @@ def main():
                               timeout=args.timeout, bind=args.bind,
                               mqtt_params=args.mqtt_params)
     conn = WebRTCConnection(signaler=signaler, reconnect=True,
-                            options=build_webrtc_options(args.webrtc_options))
+                            options=build_webrtc_options(args.webrtc_options, args.signaling))
     sub = WebRTCSubscriber(conn, topic=WebRTCSubscriber.VIDEO_TOPIC)
     Logger.info(f"magpie-video-viewer-webrtc: waiting for video on session '{args.session_id}'")
 
@@ -95,7 +95,7 @@ def main():
 
             image = np.frombuffer(frame.data, dtype=np.uint8).reshape(
                 frame.height, frame.width, frame.channels
-            )
+            ).copy()
 
             if args.verbose and prev_t is not None:
                 fps_window.append(1.0 / max(perf_counter() - prev_t, 1e-9))

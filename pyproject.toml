@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "luxai-magpie"
 description = "MAGPIE is a lightweight, modular messaging engine providing high-performance pub/sub and RPC over pluggable transports."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = { file = "LICENSE" }
 authors = [
     { name = "LuxAI S.A." }
@@ -24,7 +24,6 @@ classifiers = [
     "Topic :: Multimedia :: Video",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",

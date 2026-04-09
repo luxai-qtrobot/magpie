@@ -45,7 +45,7 @@ def webrtc_options_type(raw: str) -> dict:
     return data
 
 
-def build_webrtc_options(d: Optional[dict]):
+def build_webrtc_options(d: Optional[dict], signaling_url: str = ""):
     """
     Convert a parsed ``--webrtc-options`` dict into a ``WebRTCOptions`` instance.
 
@@ -69,6 +69,11 @@ def build_webrtc_options(d: Optional[dict]):
     from luxai.magpie.transport.webrtc import WebRTCOptions, WebRTCTurnServer  # noqa: PLC0415
 
     if not d:
+        # ZMQ signaling is local/LAN — no need for STUN
+        scheme = signaling_url.split("://")[0].lower() if "://" in signaling_url else ""
+        if scheme == "tcp":
+            from luxai.magpie.transport.webrtc import WebRTCOptions  # noqa: PLC0415
+            return WebRTCOptions(stun_servers=[])
         return None
 
     turn_servers = []

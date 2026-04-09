@@ -70,7 +70,7 @@ def main():
                               timeout=args.timeout, bind=args.bind,
                               mqtt_params=args.mqtt_params)
     conn = WebRTCConnection(signaler=signaler, reconnect=True,
-                            options=build_webrtc_options(args.webrtc_options))
+                            options=build_webrtc_options(args.webrtc_options, args.signaling))
     sub = WebRTCSubscriber(conn, topic=args.topic)
 
     msg_count = 0
