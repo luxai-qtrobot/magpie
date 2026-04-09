@@ -161,6 +161,9 @@ class WebRTCPublisher(StreamWriter):
         if not topic:
             Logger.warning("WebRTCPublisher: write() called without a topic — dropping.")
             return
+        from luxai.magpie.frames.frame import Frame
+        if isinstance(data, Frame):
+            data = data.to_dict()
         self._connection.send_data({
             "type":    "pub",
             "topic":   topic,
@@ -273,6 +276,18 @@ class WebRTCPublisher(StreamWriter):
         dtype = np.int16 if frame.bit_depth == 16 else np.int32
         samples = np.frombuffer(frame.data, dtype=dtype)
 
+        # Resample to 48000 Hz — Opus (used by aiortc) natively operates at
+        # 48 kHz; feeding a different rate produces noise or distortion.
+        # This is a no-op when sample_rate is already 48000.
+        target_rate = 48000
+        src_rate = frame.sample_rate
+        if src_rate != target_rate:
+            ratio = target_rate / src_rate
+            out_len = int(round(len(samples) * ratio))
+            x_old = np.linspace(0, 1, len(samples), endpoint=False)
+            x_new = np.linspace(0, 1, out_len, endpoint=False)
+            samples = np.interp(x_new, x_old, samples.astype(np.float64)).astype(dtype)
+
         # aiortc's opus encoder requires packed (interleaved) s16/s32 format,
         # not planar s16p/s32p.  Keep data interleaved and reshape to (1, N).
         if frame.channels == 2:
@@ -285,5 +300,5 @@ class WebRTCPublisher(StreamWriter):
 
         av_fmt = "s16" if frame.bit_depth == 16 else "s32"
         av_frame = av.AudioFrame.from_ndarray(samples, format=av_fmt, layout=layout)
-        av_frame.sample_rate = frame.sample_rate
+        av_frame.sample_rate = target_rate
         return av_frame
