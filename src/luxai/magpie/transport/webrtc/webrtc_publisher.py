@@ -133,7 +133,8 @@ class WebRTCPublisher(StreamWriter):
                 "payload": jpeg_frame.to_dict(),
             })
 
-    _audio_logged = False  # log audio frame properties once per publisher instance
+    _OPUS_FRAME_SIZE = 960   # samples @ 48000 Hz = 20 ms, the standard Opus frame size
+    _audio_logged = False   # log audio frame properties once per publisher instance
 
     def _write_audio(self, frame: "AudioFrameRaw", topic: str):
         """Send an audio frame: RTP track → magpie-media (unreliable) → magpie (reliable)."""
@@ -150,7 +151,23 @@ class WebRTCPublisher(StreamWriter):
                         f"→ av=({av_frame.sample_rate}Hz, "
                         f"{av_frame.samples}samples, fmt={av_frame.format.name})"
                     )
-                track.push(av_frame)
+                # Opus requires exactly 960 samples @ 48 kHz (20 ms) per frame.
+                # Buffer samples and push only complete frames to avoid distortion.
+                import av
+                import numpy as np
+                new_samples = av_frame.to_ndarray().flatten()
+                if not hasattr(self, "_audio_buf"):
+                    self._audio_buf = np.array([], dtype=np.int16)
+                    self._audio_buf_layout = av_frame.layout.name
+                self._audio_buf = np.concatenate([self._audio_buf, new_samples])
+                while len(self._audio_buf) >= self._OPUS_FRAME_SIZE:
+                    chunk = self._audio_buf[:self._OPUS_FRAME_SIZE]
+                    self._audio_buf = self._audio_buf[self._OPUS_FRAME_SIZE:]
+                    out = av.AudioFrame.from_ndarray(
+                        chunk.reshape(1, -1), format="s16", layout=self._audio_buf_layout
+                    )
+                    out.sample_rate = self._OPUS_FRAME_SIZE * 50  # 960 * 50 = 48000
+                    track.push(out)
             except Exception as e:
                 Logger.warning(f"WebRTCPublisher: audio frame conversion failed: {e}")
         elif self._connection._use_media_channels:
