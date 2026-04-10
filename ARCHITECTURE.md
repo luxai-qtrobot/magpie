@@ -8,7 +8,9 @@ A robot streaming video over ZeroMQ on a local network and the same robot stream
 
 ## Architecture Diagram
 
-![MAGPIE Architecture](assets/magpie-architecture.jpg)
+<p align="center">
+  <img src="https://github.com/luxai-qtrobot/magpie/raw/main/src/luxai/magpie/assets/magpie-architecture.jpg" alt="MAGPIE Architecture"/>
+</p>
 
 ---
 
