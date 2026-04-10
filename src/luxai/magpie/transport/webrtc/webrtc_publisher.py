@@ -275,7 +275,7 @@ class WebRTCPublisher(StreamWriter):
             )
 
         # av expects RGB; our frames are typically BGR — convert
-        if getattr(frame, "pixel_format", "BGR") == "BGR" and arr.ndim == 3:
+        if getattr(frame, "pixel_format", "BGR").upper().startswith("BGR") and arr.ndim == 3:
             arr = arr[:, :, ::-1].copy()
 
         return av.VideoFrame.from_ndarray(arr, format="rgb24")
