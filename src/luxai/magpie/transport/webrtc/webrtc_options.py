@@ -77,6 +77,29 @@ class WebRTCOptions:
     If ``False``, always use the data channel fallback regardless of remote
     capabilities."""
 
+    audio_topics: List[str] = field(default_factory=list)
+    """List of audio topic paths that should be transmitted as native RTP audio
+    tracks (one track per topic).  Requires ``use_media_channels=True``.
+    The order determines the transceiver order in the SDP offer/answer.
+
+    Example::
+
+        options = WebRTCOptions(
+            audio_topics=["/mic/int/audio/ch0/stream:o", "/media/audio/fg/stream:i"]
+        )
+    """
+
+    video_topics: List[str] = field(default_factory=list)
+    """List of video topic paths that should be transmitted as native RTP video
+    tracks (one track per topic).  Requires ``use_media_channels=True``.
+
+    Example::
+
+        options = WebRTCOptions(
+            video_topics=["/camera/color/image"]
+        )
+    """
+
     media_channel_jpeg_quality: int = 80
     """JPEG quality (1-100) used to compress ``ImageFrameRaw`` frames before
     sending over the data channel when ``use_media_channels=False``.

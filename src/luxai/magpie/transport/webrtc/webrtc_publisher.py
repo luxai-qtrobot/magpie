@@ -8,31 +8,30 @@ class WebRTCPublisher(StreamWriter):
     WebRTC-based stream publisher.
 
     Writes frames or arbitrary data to the remote peer over a shared
-    ``WebRTCConnection``.  The routing logic is fully internal:
+    ``WebRTCConnection``.  Routing:
 
     * ``ImageFrameRaw`` / ``ImageFrameCV`` / ``ImageFrameJpeg`` →
-      native WebRTC video media track when negotiated with the remote peer,
-      otherwise the ``"magpie-media"`` unreliable data channel fallback.
-    * ``AudioFrameRaw`` / ``AudioFrameFlac`` →
-      native WebRTC audio media track when negotiated, otherwise
-      ``"magpie-media"`` fallback.
+      native WebRTC video RTP track when the topic is in
+      ``connection.video_topics`` and was negotiated; otherwise the
+      ``"magpie-media"`` unreliable data-channel fallback (or the reliable
+      ``"magpie"`` channel when ``use_media_channels=False``).
+    * ``AudioFrameRaw`` →
+      native WebRTC audio RTP track when the topic is in
+      ``connection.audio_topics`` and was negotiated; otherwise fallback.
     * Everything else →
       ``"magpie"`` data channel (msgpack-serialized, topic-routed).
 
     Usage::
 
-        conn = WebRTCConnection.with_mqtt("mqtt://broker:1883", session_id="my-robot")
+        conn = WebRTCConnection.with_mqtt(
+            "mqtt://broker:1883", session_id="my-robot",
+            options=WebRTCOptions(video_topics=["/camera/color/image"]),
+        )
         conn.connect()
 
         pub = WebRTCPublisher(conn)
-
-        # General data (data channel)
-        pub.write({"motor": [0.1, 0.2, 0.3]}, topic="robot/state")
-
-        # Video frame (media track) — topic ignored for media
-        frame = ImageFrameCV.from_cv_image(cv_image)
-        pub.write(frame, topic="robot/camera")
-
+        pub.write(frame, topic="/camera/color/image")   # → RTP video track
+        pub.write({"speed": 1.0}, topic="robot/cmd")    # → data channel
         pub.close()
     """
 
@@ -55,46 +54,15 @@ class WebRTCPublisher(StreamWriter):
     # StreamWriter implementation
     # ------------------------------------------------------------------
 
-    _VIDEO_TOPIC = "video"
-    _AUDIO_TOPIC = "audio"
-
     def _transport_write(self, data: object, topic: str):
         from luxai.magpie.frames.image import ImageFrameRaw
         from luxai.magpie.frames.audio import AudioFrameRaw
 
-        use_media = self._connection._use_media_channels
-
         if isinstance(data, ImageFrameRaw):
-            if use_media and topic and topic != self._VIDEO_TOPIC:
-                Logger.warning(
-                    f"WebRTCPublisher: topic='{topic}' is ignored for ImageFrameRaw "
-                    f"when use_media_channels=True — frame goes to the single RTP video track. "
-                    f"Use topic=VIDEO_TOPIC or set use_media_channels=False for topic routing."
-                )
             self._write_video(data, topic)
         elif isinstance(data, AudioFrameRaw):
-            if use_media and topic and topic != self._AUDIO_TOPIC:
-                Logger.warning(
-                    f"WebRTCPublisher: topic='{topic}' is ignored for AudioFrameRaw "
-                    f"when use_media_channels=True — frame goes to the single RTP audio track. "
-                    f"Use topic=AUDIO_TOPIC or set use_media_channels=False for topic routing."
-                )
             self._write_audio(data, topic)
         else:
-            if use_media and topic == self._VIDEO_TOPIC:
-                Logger.warning(
-                    f"WebRTCPublisher: topic=VIDEO_TOPIC ('{self._VIDEO_TOPIC}') is reserved for "
-                    f"ImageFrameRaw when use_media_channels=True — data will be dropped. "
-                    f"Use a custom topic string."
-                )
-                return
-            if use_media and topic == self._AUDIO_TOPIC:
-                Logger.warning(
-                    f"WebRTCPublisher: topic=AUDIO_TOPIC ('{self._AUDIO_TOPIC}') is reserved for "
-                    f"AudioFrameRaw when use_media_channels=True — data will be dropped. "
-                    f"Use a custom topic string."
-                )
-                return
             self._write_data(data, topic)
 
     def _transport_close(self):
@@ -106,30 +74,37 @@ class WebRTCPublisher(StreamWriter):
     # ------------------------------------------------------------------
 
     def _write_video(self, frame: "ImageFrameRaw", topic: str):
-        """Send an image frame: RTP track → magpie-media (unreliable) → magpie (reliable)."""
-        track = self._connection.video_track
-        if self._connection.video_negotiated and track is not None:
-            # use_media_channels=True and RTP negotiated — fastest path
+        """Send an image frame: RTP track (if topic declared) → magpie-media → magpie."""
+        conn = self._connection
+        use_media = conn._use_media_channels
+        in_topics = topic in conn.video_topics if use_media else False
+
+        if use_media and in_topics and conn.is_video_negotiated(topic):
+            # RTP path — fastest
+            track = conn.get_video_track(topic)
             try:
                 av_frame = self._image_frame_to_av(frame)
                 track.push(av_frame)
             except Exception as e:
-                Logger.warning(f"WebRTCPublisher: video frame conversion failed: {e}")
-        elif self._connection._use_media_channels:
-            # use_media_channels=True but RTP not yet negotiated — unreliable DC fallback
+                Logger.warning(f"WebRTCPublisher: video RTP conversion failed for '{topic}': {e}")
+        elif use_media:
+            if not in_topics and topic:
+                Logger.warning(
+                    f"WebRTCPublisher: topic='{topic}' is not in video_topics — "
+                    "falling back to magpie-media data channel."
+                )
             try:
-                self._connection.send_media_frame(
-                    {"kind": "video", "topic": topic or self._VIDEO_TOPIC, "payload": frame.to_dict()}
+                conn.send_media_frame(
+                    {"kind": "video", "topic": topic, "payload": frame.to_dict()}
                 )
             except Exception as e:
                 Logger.warning(f"WebRTCPublisher: magpie-media video send failed: {e}")
         else:
-            # use_media_channels=False — compress to JPEG then send through
-            # the magpie data channel via the drop-stale queue.
+            # use_media_channels=False — compress to JPEG, send via drop-stale queue
             jpeg_frame = self._ensure_jpeg(frame)
-            self._connection.enqueue_media_send({
+            conn.enqueue_media_send({
                 "type":    "media",
-                "topic":   topic or self._VIDEO_TOPIC,
+                "topic":   topic,
                 "payload": jpeg_frame.to_dict(),
             })
 
@@ -137,9 +112,13 @@ class WebRTCPublisher(StreamWriter):
     _audio_logged = False   # log audio frame properties once per publisher instance
 
     def _write_audio(self, frame: "AudioFrameRaw", topic: str):
-        """Send an audio frame: RTP track → magpie-media (unreliable) → magpie (reliable)."""
-        track = self._connection.audio_track
-        if self._connection.audio_negotiated and track is not None:
+        """Send an audio frame: RTP track (if topic declared) → magpie-media → magpie."""
+        conn = self._connection
+        use_media = conn._use_media_channels
+        in_topics = topic in conn.audio_topics if use_media else False
+
+        if use_media and in_topics and conn.is_audio_negotiated(topic):
+            track = conn.get_audio_track(topic)
             try:
                 av_frame = self._audio_frame_to_av(frame)
                 if not self.__class__._audio_logged:
@@ -156,31 +135,40 @@ class WebRTCPublisher(StreamWriter):
                 import av
                 import numpy as np
                 new_samples = av_frame.to_ndarray().flatten()
-                if not hasattr(self, "_audio_buf"):
-                    self._audio_buf = np.array([], dtype=np.int16)
-                    self._audio_buf_layout = av_frame.layout.name
-                self._audio_buf = np.concatenate([self._audio_buf, new_samples])
-                while len(self._audio_buf) >= self._OPUS_FRAME_SIZE:
-                    chunk = self._audio_buf[:self._OPUS_FRAME_SIZE]
-                    self._audio_buf = self._audio_buf[self._OPUS_FRAME_SIZE:]
+                buf_key = f"_audio_buf_{topic}"
+                layout_key = f"_audio_buf_layout_{topic}"
+                if not hasattr(self, buf_key):
+                    setattr(self, buf_key, np.array([], dtype=np.int16))
+                    setattr(self, layout_key, av_frame.layout.name)
+                buf = np.concatenate([getattr(self, buf_key), new_samples])
+                setattr(self, buf_key, buf)
+                while len(buf) >= self._OPUS_FRAME_SIZE:
+                    chunk = buf[:self._OPUS_FRAME_SIZE]
+                    buf = buf[self._OPUS_FRAME_SIZE:]
+                    setattr(self, buf_key, buf)
                     out = av.AudioFrame.from_ndarray(
-                        chunk.reshape(1, -1), format="s16", layout=self._audio_buf_layout
+                        chunk.reshape(1, -1), format="s16", layout=getattr(self, layout_key)
                     )
                     out.sample_rate = self._OPUS_FRAME_SIZE * 50  # 960 * 50 = 48000
                     track.push(out)
             except Exception as e:
-                Logger.warning(f"WebRTCPublisher: audio frame conversion failed: {e}")
-        elif self._connection._use_media_channels:
+                Logger.warning(f"WebRTCPublisher: audio RTP conversion failed for '{topic}': {e}")
+        elif use_media:
+            if not in_topics and topic:
+                Logger.warning(
+                    f"WebRTCPublisher: topic='{topic}' is not in audio_topics — "
+                    "falling back to magpie-media data channel."
+                )
             try:
-                self._connection.send_media_frame(
-                    {"kind": "audio", "topic": topic or self._AUDIO_TOPIC, "payload": frame.to_dict()}
+                conn.send_media_frame(
+                    {"kind": "audio", "topic": topic, "payload": frame.to_dict()}
                 )
             except Exception as e:
                 Logger.warning(f"WebRTCPublisher: magpie-media audio send failed: {e}")
         else:
-            self._connection.enqueue_media_send({
+            conn.enqueue_media_send({
                 "type":    "media",
-                "topic":   topic or self._AUDIO_TOPIC,
+                "topic":   topic,
                 "payload": frame.to_dict(),
             })
 
@@ -274,8 +262,12 @@ class WebRTCPublisher(StreamWriter):
                 "Convert to 3-channel (RGB/BGR) before publishing."
             )
 
+        # Single-channel (grayscale) → replicate to RGB
+        if arr.ndim == 2 or (arr.ndim == 3 and arr.shape[2] == 1):
+            arr = np.repeat(arr.reshape(arr.shape[0], arr.shape[1], 1), 3, axis=2)
+
         # av expects RGB; our frames are typically BGR — convert
-        if getattr(frame, "pixel_format", "BGR").upper().startswith("BGR") and arr.ndim == 3:
+        elif getattr(frame, "pixel_format", "BGR").upper().startswith("BGR"):
             arr = arr[:, :, ::-1].copy()
 
         return av.VideoFrame.from_ndarray(arr, format="rgb24")

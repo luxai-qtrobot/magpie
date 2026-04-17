@@ -290,29 +290,34 @@ Signaling (SDP offer/answer + ICE candidates) is exchanged via a **`WebRtcSignal
 | `MqttSignaler` | Internet / cross-network — requires an MQTT broker |
 | `ZmqSignaler` | LAN / localhost — broker-less ZMQ PAIR socket |
 
-Role negotiation (offer vs answer) is fully automatic.  `WebRTCPublisher` routes internally based on frame type and the `use_media_channels` option (default `True`):
+Role negotiation (offer vs answer) is fully automatic.
 
-| Frame type | `use_media_channels=True` | `use_media_channels=False` |
+#### Media tracks
+
+Video and audio frames are carried over native WebRTC **RTP media tracks** (H.264/VP8 for video, Opus for audio) when `use_media_channels=True` (the default).  Each topic declared in `WebRTCOptions.video_topics` / `audio_topics` becomes its own RTP transceiver — multiple tracks per connection are fully supported.
+
+| Frame type | Topic in `video/audio_topics` | Topic **not** in lists |
 |---|---|---|
-| `ImageFrame*` | Native **RTP video track** (H.264/VP8) — topic ignored | **Data channel**, JPEG-compressed, topic-routed |
-| `AudioFrame*` | Native **RTP audio track** (Opus) — topic ignored | **Data channel**, topic-routed |
-| Everything else | **Data channel**, topic-routed | **Data channel**, topic-routed |
+| `ImageFrame*` | → **RTP video track** for that topic | → `magpie-media` unreliable data-channel fallback |
+| `AudioFrame*` | → **RTP audio track** for that topic | → `magpie-media` unreliable data-channel fallback |
+| Everything else | → **data channel**, topic-routed | ← same |
 
-With `use_media_channels=False`, video and audio frames are topic-routed just like regular data, enabling **multiple simultaneous video/audio topics** (e.g. two cameras on different topics).  Frames are auto-compressed to JPEG before sending (quality configurable via `media_channel_jpeg_quality`).
+With `use_media_channels=False`, all video/audio frames fall back to the `magpie` data channel (JPEG-compressed for images, configurable via `media_channel_jpeg_quality`).
 
 **Publisher (MQTT signaling — internet):**
 
 ```python
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher, WebRTCOptions
 
-# with_mqtt() creates the MqttSignaler and WebRTCConnection in one step.
-# conn.disconnect() also disconnects the signaler — no separate teardown needed.
-conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="my-robot")
+conn = WebRTCConnection.with_mqtt(
+    "mqtt://broker.hivemq.com:1883", session_id="my-robot",
+    options=WebRTCOptions(video_topics=["/camera/color/image"]),
+)
 conn.connect()
 
 pub = WebRTCPublisher(conn)
-pub.write({"motor": [0.1, 0.2, 0.3]}, topic="robot/state")   # → data channel
-pub.write(ImageFrameRaw(...))                                   # → video media track
+pub.write({"motor": [0.1, 0.2, 0.3]}, topic="robot/state")         # → data channel
+pub.write(ImageFrameRaw(...), topic="/camera/color/image")           # → RTP video track
 
 pub.close()
 conn.disconnect()
@@ -321,14 +326,17 @@ conn.disconnect()
 **Publisher (ZMQ signaling — LAN / localhost):**
 
 ```python
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher, WebRTCOptions
 
 # One peer binds (bind=True), the other connects (bind=False, the default).
-conn = WebRTCConnection.with_zmq("tcp://127.0.0.1:5555", session_id="my-robot", bind=True)
+conn = WebRTCConnection.with_zmq(
+    "tcp://127.0.0.1:5555", session_id="my-robot", bind=True,
+    options=WebRTCOptions(stun_servers=[], video_topics=["/camera/color/image"]),
+)
 conn.connect()
 
 pub = WebRTCPublisher(conn)
-pub.write({"motor": [0.1, 0.2, 0.3]}, topic="robot/state")
+pub.write(ImageFrameRaw(...), topic="/camera/color/image")
 
 pub.close()
 conn.disconnect()
@@ -337,22 +345,40 @@ conn.disconnect()
 **Subscriber:**
 
 ```python
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCSubscriber
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCSubscriber, WebRTCOptions
 
-conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="my-robot")
-# or: conn = WebRTCConnection.with_zmq("tcp://127.0.0.1:5555", session_id="my-robot", bind=False)
+conn = WebRTCConnection.with_mqtt(
+    "mqtt://broker.hivemq.com:1883", session_id="my-robot",
+    options=WebRTCOptions(video_topics=["/camera/color/image"]),
+)
 conn.connect()
 
-sub  = WebRTCSubscriber(conn, topic="robot/state")                  # data channel topic
-vsub = WebRTCSubscriber(conn, topic=WebRTCSubscriber.VIDEO_TOPIC)   # RTP video track (use_media_channels=True)
-# vsub = WebRTCSubscriber(conn, topic="/camera")                    # data channel topic (use_media_channels=False)
+sub  = WebRTCSubscriber(conn, topic="robot/state")              # data channel
+vsub = WebRTCSubscriber(conn, topic="/camera/color/image")      # RTP video track
 
 data, _  = sub.read(timeout=5.0)
-frame, _ = vsub.read(timeout=5.0)   # ImageFrameRaw (RTP) or ImageFrameJpeg (data channel)
+frame, _ = vsub.read(timeout=5.0)   # ImageFrameRaw
 
 sub.close()
 vsub.close()
 conn.disconnect()
+```
+
+**Multiple video + audio tracks on one connection:**
+
+```python
+opts = WebRTCOptions(
+    video_topics=["/camera/color/image", "/camera/depth/image"],
+    audio_topics=["/mic/audio/stream"],
+)
+conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883",
+                                  session_id="my-robot", options=opts)
+conn.connect()
+
+pub = WebRTCPublisher(conn)
+pub.write(color_frame, topic="/camera/color/image")   # → RTP track 1
+pub.write(depth_frame, topic="/camera/depth/image")   # → RTP track 2
+pub.write(audio_frame, topic="/mic/audio/stream")     # → RTP audio track
 ```
 
 ### WebRTC Request / Response RPC
@@ -425,8 +451,10 @@ opts = WebRTCOptions(
     audio_codec="opus",
     video_bitrate=2000,                                  # kbps
     audio_bitrate=96,                                    # kbps
-    use_media_channels=True,                             # False: route video/audio over data channel instead of RTP
+    use_media_channels=True,                             # False: route all media over data channel
     media_channel_jpeg_quality=80,                       # JPEG quality (1-100) when use_media_channels=False
+    video_topics=["/camera/color/image"],                # one RTP video transceiver per topic
+    audio_topics=["/mic/audio/stream"],                  # one RTP audio transceiver per topic
 )
 conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", "my-robot", options=opts)
 ```
@@ -782,29 +810,60 @@ magpie-request-webrtc my-robot robot/motion '{"action": "move", "x": 1.0}' \
 
 ```bash
 # Stream camera 0 at 1280×720, 30 fps via MQTT signaling
-magpie-video-capture-webrtc my-robot \
+magpie-video-capture-webrtc my-robot /camera/color/image \
     --signaling mqtt://broker.hivemq.com:1883
 
 # LAN: capture side binds the ZMQ signaling socket
-magpie-video-capture-webrtc my-robot \
+magpie-video-capture-webrtc my-robot /camera/color/image \
     --signaling tcp://127.0.0.1:5555 --bind
 
 # Choose camera, resolution, and frame rate
-magpie-video-capture-webrtc my-robot \
+magpie-video-capture-webrtc my-robot /camera/color/image \
     --signaling mqtt://broker.hivemq.com:1883 \
     --camera 1 --size 640 480 --framerate 15
 ```
+
+The `topic` argument (second positional) identifies the RTP video track — both sides must use the same value.  Omit it to use the default `video`.
 
 ### `magpie-video-viewer-webrtc` — Receive and display a WebRTC video stream
 
 ```bash
 # View via MQTT signaling
-magpie-video-viewer-webrtc my-robot \
+magpie-video-viewer-webrtc my-robot /camera/color/image \
     --signaling mqtt://broker.hivemq.com:1883
 
 # LAN: viewer connects (no --bind)
-magpie-video-viewer-webrtc my-robot \
+magpie-video-viewer-webrtc my-robot /camera/color/image \
     --signaling tcp://127.0.0.1:5555
+```
+
+### `magpie-audio-capture-webrtc` — Capture microphone audio and stream over a WebRTC media track
+
+```bash
+# Stream at 48 kHz mono (default) via MQTT signaling
+magpie-audio-capture-webrtc my-robot /mic/audio/stream \
+    --signaling mqtt://broker.hivemq.com:1883
+
+# LAN: capture side binds
+magpie-audio-capture-webrtc my-robot /mic/audio/stream \
+    --signaling tcp://127.0.0.1:5556 --bind
+
+# Custom sample rate and block size
+magpie-audio-capture-webrtc my-robot /mic/audio/stream \
+    --signaling mqtt://broker.hivemq.com:1883 \
+    --samplerate 16000 --channels 1 --blocksize 320
+```
+
+### `magpie-audio-player-webrtc` — Receive and play a WebRTC audio stream
+
+```bash
+# Play via MQTT signaling
+magpie-audio-player-webrtc my-robot /mic/audio/stream \
+    --signaling mqtt://broker.hivemq.com:1883
+
+# LAN: player connects (no --bind)
+magpie-audio-player-webrtc my-robot /mic/audio/stream \
+    --signaling tcp://127.0.0.1:5556
 ```
 
 ---

@@ -15,38 +15,36 @@ class WebRTCSubscriber(StreamReader):
 
     **use_media_channels=True** (default):
 
-    * ``VIDEO_TOPIC`` (``"video"``) → RTP video track; ``read()`` returns
-      ``ImageFrameRaw``.  Only one video topic is supported.
-    * ``AUDIO_TOPIC`` (``"audio"``) → RTP audio track; ``read()`` returns
-      ``AudioFrameRaw``.  Only one audio topic is supported.
-    * Any other string → data channel topic (regular pub/sub data).
+    * If *topic* is in ``connection.video_topics`` → RTP video track;
+      ``read()`` returns ``ImageFrameRaw``.
+    * If *topic* is in ``connection.audio_topics`` → RTP audio track;
+      ``read()`` returns ``AudioFrameRaw``.
+    * Any other topic → data channel pub/sub.
 
     **use_media_channels=False**:
 
-    * Any string, including ``VIDEO_TOPIC`` / ``AUDIO_TOPIC`` → fully
-      topic-routed via the ``magpie-media`` unreliable data channel.
-      Multiple video and audio topics are supported simultaneously.
-      ``read()`` returns whatever frame type the publisher wrote to that topic.
+    * Any topic → data channel pub/sub; video/audio frames are topic-routed
+      via the ``magpie-media`` unreliable data channel.
 
     Usage::
 
-        conn = WebRTCConnection.with_mqtt("mqtt://broker:1883", session_id="my-robot")
+        conn = WebRTCConnection.with_mqtt(
+            "mqtt://broker:1883", session_id="my-robot",
+            options=WebRTCOptions(video_topics=["/camera/color/image"]),
+        )
         conn.connect()
+
+        # Video frames (RTP track)
+        vsub = WebRTCSubscriber(conn, topic="/camera/color/image")
+        frame, _ = vsub.read(timeout=5.0)   # ImageFrameRaw
 
         # General data
         sub = WebRTCSubscriber(conn, topic="robot/state")
         data, topic = sub.read(timeout=5.0)
 
-        # Video frames
-        vsub = WebRTCSubscriber(conn, topic="video")
-        frame, _ = vsub.read(timeout=5.0)   # frame is ImageFrameRaw
-
-        sub.close()
         vsub.close()
+        sub.close()
     """
-
-    VIDEO_TOPIC = "video"
-    AUDIO_TOPIC = "audio"
 
     def __init__(
         self,
@@ -58,16 +56,6 @@ class WebRTCSubscriber(StreamReader):
         Args:
             connection: Shared ``WebRTCConnection`` instance.
             topic: Topic to subscribe to.
-
-                   When ``use_media_channels=True``:
-                     - ``VIDEO_TOPIC`` (``"video"``) → RTP video track.
-                     - ``AUDIO_TOPIC`` (``"audio"``) → RTP audio track.
-                     - Any other string → data channel topic.
-
-                   When ``use_media_channels=False``:
-                     - Any string (including ``VIDEO_TOPIC`` / ``AUDIO_TOPIC``) →
-                       data channel topic; video/audio frames are topic-routed
-                       just like regular data, enabling multiple video/audio topics.
             queue_size: Size of the internal reader queue.
         """
         self._connection = connection
@@ -76,20 +64,23 @@ class WebRTCSubscriber(StreamReader):
 
         use_media = connection._use_media_channels
 
-        # Register with the connection before starting the StreamReader thread.
-        # When use_media_channels=True, VIDEO_TOPIC/AUDIO_TOPIC tap the RTP track
-        # callbacks.  For everything else (including all topics when
-        # use_media_channels=False) we register as a pub callback so that
-        # magpie-media frames are routed by topic just like regular data.
-        if use_media and topic == self.VIDEO_TOPIC:
-            self._connection.add_video_callback(self._on_media_frame)
-        elif use_media and topic == self.AUDIO_TOPIC:
-            self._connection.add_audio_callback(self._on_media_frame)
+        if use_media and topic in connection.video_topics:
+            self._connection.add_video_callback(topic, self._on_media_frame)
+            self._kind = "video"
+        elif use_media and topic in connection.audio_topics:
+            self._connection.add_audio_callback(topic, self._on_media_frame)
+            self._kind = "audio"
         else:
+            if use_media and topic:
+                # Topic not declared in options — route as data channel pub/sub.
+                # This is expected for non-media topics; only warn if it looks
+                # like the user intended a media topic but forgot to declare it.
+                pass
             self._connection.add_pub_callback(topic, self._on_data_message)
+            self._kind = "data"
 
         super().__init__(name="WebRTCSubscriber", queue_size=queue_size)
-        Logger.debug(f"WebRTCSubscriber: subscribed to '{topic}'.")
+        Logger.debug(f"WebRTCSubscriber: subscribed to '{topic}' (kind={self._kind}).")
 
     # ------------------------------------------------------------------
     # Internal callbacks (called from WebRTCConnection routing)
@@ -99,9 +90,9 @@ class WebRTCSubscriber(StreamReader):
         """Invoked by WebRTCConnection for each matching data channel message."""
         self._msg_queue.put_nowait((payload, topic))
 
-    def _on_media_frame(self, frame: object):
+    def _on_media_frame(self, frame: object, topic: str):
         """Invoked by WebRTCConnection for each received media frame."""
-        self._msg_queue.put_nowait((frame, self._topic))
+        self._msg_queue.put_nowait((frame, topic))
 
     # ------------------------------------------------------------------
     # StreamReader implementation
@@ -117,11 +108,10 @@ class WebRTCSubscriber(StreamReader):
             )
 
     def _transport_close(self):
-        use_media = self._connection._use_media_channels
-        if use_media and self._topic == self.VIDEO_TOPIC:
-            self._connection.remove_video_callback(self._on_media_frame)
-        elif use_media and self._topic == self.AUDIO_TOPIC:
-            self._connection.remove_audio_callback(self._on_media_frame)
+        if self._kind == "video":
+            self._connection.remove_video_callback(self._topic, self._on_media_frame)
+        elif self._kind == "audio":
+            self._connection.remove_audio_callback(self._topic, self._on_media_frame)
         else:
             self._connection.remove_pub_callback(self._topic, self._on_data_message)
         Logger.debug(f"WebRTCSubscriber: unsubscribed from '{self._topic}'.")

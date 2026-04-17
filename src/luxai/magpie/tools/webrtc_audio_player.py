@@ -46,6 +46,8 @@ def main():
     )
     parser.add_argument("session_id", type=str,
                         help="Shared session name — must match the capture side (e.g. my-robot)")
+    parser.add_argument("topic", type=str, nargs="?", default="audio",
+                        help="Audio topic path to subscribe to (default: audio)")
     parser.add_argument("--signaling", type=str, default="mqtt://127.0.0.1:1883",
                         metavar="URL",
                         help="Signaling URL: mqtt://host:port or tcp://host:port (ZMQ). "
@@ -70,14 +72,19 @@ def main():
     args = parser.parse_args()
     Logger.set_level("DEBUG" if args.verbose else "INFO")
 
+    from dataclasses import replace as _dc_replace
+    from luxai.magpie.transport.webrtc import WebRTCOptions
+    base_opts = build_webrtc_options(args.webrtc_options, args.signaling) or WebRTCOptions()
+    if not base_opts.audio_topics:
+        base_opts = _dc_replace(base_opts, audio_topics=[args.topic])
+
     signaler = build_signaler(args.signaling, args.session_id,
                               client_id="magpie-webrtc-aplay",
                               timeout=args.timeout, bind=args.bind,
                               mqtt_params=args.mqtt_params)
-    conn = WebRTCConnection(signaler=signaler, reconnect=True,
-                            options=build_webrtc_options(args.webrtc_options, args.signaling))
-    sub = WebRTCSubscriber(conn, topic=WebRTCSubscriber.AUDIO_TOPIC)
-    Logger.info(f"magpie-audio-player-webrtc: waiting for audio on session '{args.session_id}'")
+    conn = WebRTCConnection(signaler=signaler, reconnect=True, options=base_opts)
+    sub = WebRTCSubscriber(conn, topic=args.topic)
+    Logger.info(f"magpie-audio-player-webrtc: waiting for '{args.topic}' on session '{args.session_id}'")
 
     out_stream = None
     chunk_rates = deque(maxlen=20)

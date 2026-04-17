@@ -44,6 +44,8 @@ def main():
     )
     parser.add_argument("session_id", type=str,
                         help="Shared session name — must match the viewer (e.g. my-robot)")
+    parser.add_argument("topic", type=str, nargs="?", default="video",
+                        help="Video topic path to publish to (default: video)")
     parser.add_argument("--signaling", type=str, default="mqtt://127.0.0.1:1883",
                         metavar="URL",
                         help="Signaling URL: mqtt://host:port or tcp://host:port (ZMQ). "
@@ -84,14 +86,19 @@ def main():
     actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     Logger.info(f"magpie-video-capture-webrtc: camera {args.camera} @ {actual_w}x{actual_h} {args.framerate}fps")
 
+    from dataclasses import replace as _dc_replace
+    from luxai.magpie.transport.webrtc import WebRTCOptions
+    base_opts = build_webrtc_options(args.webrtc_options, args.signaling) or WebRTCOptions()
+    if not base_opts.video_topics:
+        base_opts = _dc_replace(base_opts, video_topics=[args.topic])
+
     signaler = build_signaler(args.signaling, args.session_id,
                               client_id="magpie-webrtc-vcap",
                               timeout=args.timeout, bind=args.bind,
                               mqtt_params=args.mqtt_params)
-    conn = WebRTCConnection(signaler=signaler, reconnect=True,
-                            options=build_webrtc_options(args.webrtc_options, args.signaling))
+    conn = WebRTCConnection(signaler=signaler, reconnect=True, options=base_opts)
     pub = WebRTCPublisher(conn)
-    Logger.info(f"magpie-video-capture-webrtc: streaming on session '{args.session_id}'")
+    Logger.info(f"magpie-video-capture-webrtc: streaming '{args.topic}' on session '{args.session_id}'")
 
     frame_period = 1.0 / max(1, args.framerate)
     try:
@@ -105,7 +112,7 @@ def main():
                     data=cv_image.tobytes(), format="raw",
                     width=fw, height=fh, channels=fc, pixel_format="BGR",
                 )
-                pub.write(frame)
+                pub.write(frame, topic=args.topic)
             elapsed = time.time() - t
             if elapsed < frame_period:
                 time.sleep(frame_period - elapsed)

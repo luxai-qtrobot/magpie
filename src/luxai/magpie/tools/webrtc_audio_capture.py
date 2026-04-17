@@ -46,6 +46,8 @@ def main():
     )
     parser.add_argument("session_id", type=str,
                         help="Shared session name — must match the player (e.g. my-robot)")
+    parser.add_argument("topic", type=str, nargs="?", default="audio",
+                        help="Audio topic path to publish to (default: audio)")
     parser.add_argument("--signaling", type=str, default="mqtt://127.0.0.1:1883",
                         metavar="URL",
                         help="Signaling URL: mqtt://host:port or tcp://host:port (ZMQ). "
@@ -95,14 +97,19 @@ def main():
             except queue.Full:
                 pass
 
+    from dataclasses import replace as _dc_replace
+    from luxai.magpie.transport.webrtc import WebRTCOptions
+    base_opts = build_webrtc_options(args.webrtc_options, args.signaling) or WebRTCOptions()
+    if not base_opts.audio_topics:
+        base_opts = _dc_replace(base_opts, audio_topics=[args.topic])
+
     signaler = build_signaler(args.signaling, args.session_id,
                               client_id="magpie-webrtc-acap",
                               timeout=args.timeout, bind=args.bind,
                               mqtt_params=args.mqtt_params)
-    conn = WebRTCConnection(signaler=signaler, reconnect=True,
-                            options=build_webrtc_options(args.webrtc_options, args.signaling))
+    conn = WebRTCConnection(signaler=signaler, reconnect=True, options=base_opts)
     pub = WebRTCPublisher(conn)
-    Logger.info(f"magpie-audio-capture-webrtc: streaming on session '{args.session_id}'")
+    Logger.info(f"magpie-audio-capture-webrtc: streaming '{args.topic}' on session '{args.session_id}'")
 
     stream = sd.InputStream(
         device=args.device,
@@ -145,7 +152,7 @@ def main():
                 channels=ch,
                 bit_depth=16,
             )
-            pub.write(frame)
+            pub.write(frame, topic=args.topic)
 
     except KeyboardInterrupt:
         Logger.info("magpie-audio-capture-webrtc: interrupted.")
