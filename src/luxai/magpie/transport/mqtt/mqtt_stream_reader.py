@@ -7,9 +7,9 @@ from luxai.magpie.utils.logger import Logger
 from .mqtt_connection import MqttConnection
 
 
-class MqttSubscriber(StreamReader):
+class MqttStreamReader(StreamReader):
     """
-    MQTT-based stream subscriber.
+    MQTT-based stream reader.
 
     Subscribes to one MQTT topic (or wildcard pattern) through a shared
     ``MqttConnection`` and delivers deserialized messages via ``read()``.
@@ -18,7 +18,7 @@ class MqttSubscriber(StreamReader):
         - ``+`` matches a single topic level (e.g. ``sensors/+/temperature``)
         - ``#`` matches all remaining levels  (e.g. ``sensors/#``)
 
-    Multiple ``MqttSubscriber`` instances can share the same connection and
+    Multiple ``MqttStreamReader`` instances can share the same connection and
     subscribe to the same or different topics without opening additional
     broker connections.
 
@@ -27,7 +27,7 @@ class MqttSubscriber(StreamReader):
         conn = MqttConnection("mqtt://broker.example.com:1883")
         conn.connect()
 
-        sub = MqttSubscriber(conn, topic="sensors/temperature")
+        sub = MqttStreamReader(conn, topic="sensors/temperature")
         while True:
             try:
                 data, topic = sub.read(timeout=5.0)
@@ -73,9 +73,9 @@ class MqttSubscriber(StreamReader):
         # background thread so no messages are lost.
         self._connection.add_subscription(self._topic, self._on_message, qos=self._qos)
 
-        super().__init__(name="MqttSubscriber", queue_size=queue_size)
+        super().__init__(name="MqttStreamReader", queue_size=queue_size)
         Logger.debug(
-            f"MqttSubscriber: subscribed to '{topic}' (broker={connection.uri})"
+            f"MqttStreamReader: subscribed to '{topic}' (broker={connection.uri})"
         )
 
     # ------------------------------------------------------------------
@@ -89,7 +89,7 @@ class MqttSubscriber(StreamReader):
             self._msg_queue.put_nowait((data, topic))
         except Exception as e:
             Logger.warning(
-                f"MqttSubscriber: deserialization error for topic '{topic}': {e}"
+                f"MqttStreamReader: deserialization error for topic '{topic}': {e}"
             )
 
     # ------------------------------------------------------------------
@@ -109,10 +109,10 @@ class MqttSubscriber(StreamReader):
             return self._msg_queue.get(timeout=timeout)
         except Empty:
             raise TimeoutError(
-                f"MqttSubscriber: no data received"
+                f"MqttStreamReader: no data received"
                 + (f" within {timeout}s" if timeout is not None else "")
             )
 
     def _transport_close(self):
         self._connection.remove_subscription(self._topic, self._on_message)
-        Logger.debug(f"MqttSubscriber: unsubscribed from '{self._topic}'.")
+        Logger.debug(f"MqttStreamReader: unsubscribed from '{self._topic}'.")

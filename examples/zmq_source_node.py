@@ -6,8 +6,8 @@ from luxai.magpie.transport import StreamWriter
 from luxai.magpie.utils import Logger
 from luxai.magpie.nodes import SourceNode
 from luxai.magpie.nodes import SinkNode
-from luxai.magpie.transport import ZMQPublisher
-from luxai.magpie.transport import ZMQSubscriber
+from luxai.magpie.transport import ZmqStreamWriter
+from luxai.magpie.transport import ZmqStreamReader
 
 
 class PubNode(SourceNode):
@@ -25,7 +25,7 @@ class PubNode(SourceNode):
 
 if __name__ == '__main__':
     Logger.set_level("DEBUG")
-    node1 = PubNode(name='node1', stream_writer=ZMQPublisher("tcp://*:5555"))
+    node1 = PubNode(name='node1', stream_writer=ZmqStreamWriter("tcp://*:5555"))
 
     try:
         time.sleep(100)

@@ -6,13 +6,13 @@ Demonstrates multiple RTP tracks on a single WebRTC connection:
   - One audio track:  /mic/audio/stream
 
 Each topic maps to its own RTP transceiver in the SDP negotiation.
-Both the publisher (robot side) and subscriber (operator side) declare
+Both the writer (robot side) and reader (operator side) declare
 the same topic lists in their ``WebRTCOptions`` — the SDP offer/answer
 exchanges those lists so each incoming ``on_track`` event is mapped to
 the correct topic by index.
 
-This script acts as the **publisher** (robot side).  Run a mirror subscriber
-that declares the same options and creates a ``WebRTCSubscriber`` for each topic.
+This script acts as the **writer** (robot side).  Run a mirror reader
+that declares the same options and creates a ``WebRtcStreamReader`` for each topic.
 
 Usage:
     Terminal 1 (robot):    python examples/webrtc_multi_media.py
@@ -29,7 +29,7 @@ import sounddevice as sd
 
 from luxai.magpie.frames.image import ImageFrameRaw
 from luxai.magpie.frames.audio import AudioFrameRaw
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher, WebRTCOptions
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamWriter, WebRTCOptions
 from luxai.magpie.utils import Logger
 
 
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     if not conn.connect():
         raise SystemExit("WebRTC handshake timed out.")
 
-    pub  = WebRTCPublisher(conn)
+    pub  = WebRtcStreamWriter(conn)
     stop = threading.Event()
 
     # ── Audio capture thread ────────────────────────────────────────────────

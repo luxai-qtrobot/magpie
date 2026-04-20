@@ -19,7 +19,7 @@ except ImportError:
 
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.nodes.source_node import SourceNode
-from luxai.magpie.transport import MqttConnection, MqttPublisher
+from luxai.magpie.transport import MqttConnection, MqttStreamWriter
 from luxai.magpie.frames import DictFrame
 from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options
 
@@ -112,7 +112,7 @@ class MqttPublish(SourceNode):
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="magpie-publish-mqtt",
+        prog="magpie-write-mqtt",
         description="Publish a message to a Magpie MQTT topic",
     )
 
@@ -187,16 +187,16 @@ def main():
     Logger.set_level("DEBUG" if args.verbose else "INFO")
 
     if not args.raw and not isinstance(args.data, dict):
-        Logger.error("magpie-publish-mqtt: payload must be a dict when not using --raw")
+        Logger.error("magpie-write-mqtt: payload must be a dict when not using --raw")
         return 2
     if args.rate is not None and args.rate <= 0:
-        Logger.error("magpie-publish-mqtt: --rate must be > 0")
+        Logger.error("magpie-write-mqtt: --rate must be > 0")
         return 2
     if args.loop and args.rate is None:
-        Logger.error("magpie-publish-mqtt: --loop requires --rate")
+        Logger.error("magpie-write-mqtt: --loop requires --rate")
         return 2
     if args.count is not None and args.count <= 0:
-        Logger.info("magpie-publish-mqtt: --count <= 0, nothing to do")
+        Logger.info("magpie-write-mqtt: --count <= 0, nothing to do")
         return 0
 
     opts = build_mqtt_options(args.mqtt_params)
@@ -206,14 +206,14 @@ def main():
 
     conn = MqttConnection(args.uri, options=opts)
     if not conn.connect(timeout=args.timeout):
-        Logger.error(f"magpie-publish-mqtt: could not connect to broker at {args.uri}")
+        Logger.error(f"magpie-write-mqtt: could not connect to broker at {args.uri}")
         return 1
 
-    publisher = MqttPublisher(conn)
+    publisher = MqttStreamWriter(conn)
 
     node = MqttPublish(
         name="MagpieMqttPublish",
-        stream_writer=publisher,
+        stream_writer=writer,
         setup_kwargs={
             "topic": args.topic,
             "data": args.data,
@@ -232,7 +232,7 @@ def main():
 
     Logger.info("Closing...")
     node.terminate()
-    publisher.close()
+    writer.close()
     conn.disconnect()
 
 

@@ -19,7 +19,7 @@ except ImportError:
 
 from luxai.magpie.utils import Logger
 from luxai.magpie.nodes import SinkNode
-from luxai.magpie.transport import ZMQSubscriber
+from luxai.magpie.transport import ZmqStreamReader
 from luxai.magpie.frames import Frame, ImageFrameCV, ImageFrameJpeg, ImageFrameRaw
 
 
@@ -101,12 +101,12 @@ def main():
     parser.add_argument(
         "--bind",
         action="store_true",
-        help="Bind the subscriber socket instead of connecting (default: connect).",
+        help="Bind the reader socket instead of connecting (default: connect).",
     )
 
     args = parser.parse_args()
     node = ZmqVideoViewer(name='MagpieVideoViewer',
-                          stream_reader=ZMQSubscriber(
+                          stream_reader=ZmqStreamReader(
                           endpoint=args.endpoint,
                           topic=args.topic,
                           bind=args.bind,

@@ -8,8 +8,8 @@ from .mqtt_options import (
     MqttDefaultsOptions,
 )
 from .mqtt_connection import MqttConnection
-from .mqtt_publisher import MqttPublisher
-from .mqtt_subscriber import MqttSubscriber
+from .mqtt_stream_writer import MqttStreamWriter
+from .mqtt_stream_reader import MqttStreamReader
 from .mqtt_rpc_requester import MqttRpcRequester
 from .mqtt_rpc_responder import MqttRpcResponder
 
@@ -22,8 +22,8 @@ __all__ = [
     "MqttWillOptions",
     "MqttDefaultsOptions",
     "MqttConnection",
-    "MqttPublisher",
-    "MqttSubscriber",
+    "MqttStreamWriter",
+    "MqttStreamReader",
     "MqttRpcRequester",
     "MqttRpcResponder",
 ]

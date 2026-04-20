@@ -24,7 +24,7 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCSubscriber  # noqa: F401
+    from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamReader  # noqa: F401
 except ImportError:
     from luxai.magpie.utils.logger import Logger
     Logger.error(
@@ -83,7 +83,7 @@ def main():
                               timeout=args.timeout, bind=args.bind,
                               mqtt_params=args.mqtt_params)
     conn = WebRTCConnection(signaler=signaler, reconnect=True, options=base_opts)
-    sub = WebRTCSubscriber(conn, topic=args.topic)
+    sub = WebRtcStreamReader(conn, topic=args.topic)
     Logger.info(f"magpie-audio-player-webrtc: waiting for '{args.topic}' on session '{args.session_id}'")
 
     out_stream = None

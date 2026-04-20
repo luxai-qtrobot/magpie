@@ -1,13 +1,13 @@
 """
-WebRTC Publisher example.
+WebRTC Writer example.
 
 Streams sensor data from robot to operator over the internet using a WebRTC
 data channel.  MQTT is used only for the initial signaling handshake (SDP +
 ICE exchange); all payload traffic flows P2P via WebRTC.
 
-Usage (run together with webrtc_subscriber.py):
-    Terminal 1 (robot):    python examples/webrtc_publisher.py
-    Terminal 2 (operator): python examples/webrtc_subscriber.py
+Usage (run together with webrtc_reader.py):
+    Terminal 1 (robot):    python examples/webrtc_writer.py
+    Terminal 2 (operator): python examples/webrtc_reader.py
 
 TIP: Change SESSION_ID to something unique to avoid collisions with other
      users sharing the same public broker.
@@ -15,12 +15,12 @@ TIP: Change SESSION_ID to something unique to avoid collisions with other
 
 import time
 
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher, WebRTCOptions
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamWriter, WebRTCOptions
 from luxai.magpie.utils import Logger
 
 
 BROKER_URI = "mqtt://broker.hivemq.com:1883"  # MQTT broker used only for signaling
-SESSION_ID = "magpie/examples/webrtc"         # shared rendezvous name — must match subscriber
+SESSION_ID = "magpie/examples/webrtc"         # shared rendezvous name — must match reader
 TOPIC      = "robot/state"                    # topic to publish data on
 
 
@@ -54,7 +54,7 @@ if __name__ == "__main__":
     if not conn.connect():
         raise SystemExit("WebRTC handshake timed out.")
 
-    pub = WebRTCPublisher(conn)
+    pub = WebRtcStreamWriter(conn)
 
     count = 1
     while True:

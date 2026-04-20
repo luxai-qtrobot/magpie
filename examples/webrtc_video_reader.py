@@ -1,8 +1,8 @@
 """
-WebRTC Video Subscriber example.
+WebRTC Video Reader example.
 
 Receives and displays camera frames streamed over a native WebRTC RTP video track.
-The topic must match what the publisher declared in ``WebRTCOptions.video_topics``.
+The topic must match what the writer declared in ``WebRTCOptions.video_topics``.
 
 Usage (run together with webrtc_video_publisher.py):
     Terminal 1 (robot):    python examples/webrtc_video_publisher.py
@@ -13,12 +13,12 @@ import numpy as np
 import cv2
 
 from luxai.magpie.frames.image import ImageFrameRaw
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCSubscriber, WebRTCOptions
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamReader, WebRTCOptions
 from luxai.magpie.utils import Logger
 
 
-SESSION_ID = "magpie/examples/webrtc-video"    # shared rendezvous name — must match publisher
-VIDEO_TOPIC = "/camera/color/image"             # must match publisher's video_topics entry
+SESSION_ID = "magpie/examples/webrtc-video"    # shared rendezvous name — must match writer
+VIDEO_TOPIC = "/camera/color/image"             # must match writer's video_topics entry
 
 
 if __name__ == "__main__":
@@ -45,7 +45,7 @@ if __name__ == "__main__":
         raise SystemExit("WebRTC handshake timed out.")
 
     # Topic matches the RTP video track declared in options
-    sub = WebRTCSubscriber(conn, topic=VIDEO_TOPIC)
+    sub = WebRtcStreamReader(conn, topic=VIDEO_TOPIC)
 
     while True:
         try:

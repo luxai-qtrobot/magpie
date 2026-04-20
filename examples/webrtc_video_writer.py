@@ -1,5 +1,5 @@
 """
-WebRTC Video Publisher example.
+WebRTC Video Writer example.
 
 Streams a camera frame to the remote peer over a native WebRTC RTP video track
 (H.264 by default).  The topic must be declared in ``WebRTCOptions.video_topics``
@@ -13,11 +13,11 @@ Usage (run together with webrtc_video_subscriber.py):
 import cv2
 
 from luxai.magpie.frames.image import ImageFrameRaw
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher, WebRTCOptions
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamWriter, WebRTCOptions
 from luxai.magpie.utils import Logger
 
 
-SESSION_ID = "magpie/examples/webrtc-video"    # shared rendezvous name — must match subscriber
+SESSION_ID = "magpie/examples/webrtc-video"    # shared rendezvous name — must match reader
 VIDEO_TOPIC = "/camera/color/image"             # topic for the RTP video track
 
 
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     if not conn.connect():
         raise SystemExit("WebRTC handshake timed out.")
 
-    pub = WebRTCPublisher(conn)
+    pub = WebRtcStreamWriter(conn)
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         raise SystemExit("Could not open camera.")

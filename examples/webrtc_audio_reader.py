@@ -1,5 +1,5 @@
 """
-WebRTC Audio Subscriber example.
+WebRTC Audio Reader example.
 
 Receives microphone audio streamed over a native WebRTC RTP audio track and plays
 it through the local speaker.
@@ -15,12 +15,12 @@ import numpy as np
 import sounddevice as sd
 
 from luxai.magpie.frames.audio import AudioFrameRaw
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCSubscriber, WebRTCOptions
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamReader, WebRTCOptions
 from luxai.magpie.utils import Logger
 
 
 SESSION_ID  = "magpie/examples/webrtc-audio"
-AUDIO_TOPIC = "/mic/audio/stream"   # must match publisher's audio_topics entry
+AUDIO_TOPIC = "/mic/audio/stream"   # must match writer's audio_topics entry
 
 
 if __name__ == "__main__":
@@ -40,7 +40,7 @@ if __name__ == "__main__":
     if not conn.connect():
         raise SystemExit("WebRTC handshake timed out.")
 
-    sub = WebRTCSubscriber(conn, topic=AUDIO_TOPIC)
+    sub = WebRtcStreamReader(conn, topic=AUDIO_TOPIC)
     out_stream = None
 
     Logger.info(f"Waiting for audio on '{AUDIO_TOPIC}' …  Ctrl-C to stop.")

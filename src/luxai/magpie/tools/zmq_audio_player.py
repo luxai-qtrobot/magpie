@@ -17,7 +17,7 @@ except ImportError:
 
 from luxai.magpie.utils import Logger
 from luxai.magpie.nodes import SinkNode
-from luxai.magpie.transport import ZMQSubscriber
+from luxai.magpie.transport import ZmqStreamReader
 from luxai.magpie.frames import Frame, AudioFrameRaw, AudioFrameFlac
 
 
@@ -197,14 +197,14 @@ def main():
     parser.add_argument(
         "--bind",
         action="store_true",
-        help="Bind the subscriber socket instead of connecting (default: connect).",
+        help="Bind the reader socket instead of connecting (default: connect).",
     )
 
     args = parser.parse_args()
 
     node = ZmqAudioPlayer(
         name='MagpieAudioPlayer',
-        stream_reader=ZMQSubscriber(endpoint=args.endpoint,
+        stream_reader=ZmqStreamReader(endpoint=args.endpoint,
                                     topic=args.topic,
                                     bind=args.bind,
                                     queue_size=1,                                    

@@ -5,13 +5,12 @@ from .zmq_utils import zmq
 import zmq.utils.monitor
 import time
 
-class ZMQPublisher(StreamWriter):
+class ZmqStreamWriter(StreamWriter):
     """
-    ZMQPublisher class.
-    
-    This class is responsible for publishing messages to a ZeroMQ socket. 
-    It uses the PUB socket type, which is typically used in the Publisher-Subscriber 
-    pattern, where the publisher sends messages to all connected subscribers.
+    ZmqStreamWriter class.
+
+    This class is responsible for writing messages to a ZeroMQ socket.
+    It uses the PUB socket type to stream data to all connected stream readers.
     """
 
     def __init__(
@@ -41,7 +40,7 @@ class ZMQPublisher(StreamWriter):
         self.context = zmq.Context.instance() if endpoint.startswith('inproc:') else zmq.Context()
         self.socket = self.context.socket(zmq.PUB)
 
-        # Apply delivery mode for publisher side
+        # Apply delivery mode for writer side
         if self.delivery == "latest":
             # Only sender side option needed for real-time semantics:
             # Prevent large outbound queue buildup
@@ -60,10 +59,10 @@ class ZMQPublisher(StreamWriter):
             action = "connected"
 
         # Start StreamWriter worker thread
-        super().__init__(name='ZMQPublisher', queue_size=queue_size)
+        super().__init__(name='ZmqStreamWriter', queue_size=queue_size)
 
         Logger.debug(
-            f"ZMQPublisher is ready ({action} at {self.endpoint}, delivery={self.delivery})"
+            f"ZmqStreamWriter is ready ({action} at {self.endpoint}, delivery={self.delivery})"
         )
 
     def _transport_write(self, data: object, topic: str):
@@ -105,7 +104,7 @@ class ZMQPublisher(StreamWriter):
         except Exception as e:
             Logger.warning(f"{self.name} socket close error: {e}")
 
-        # Close context only if this publisher created it
+        # Close context only if this writer created it
         try:
             if not self.endpoint.startswith("inproc:"):
                 self.context.term()
@@ -121,7 +120,7 @@ class ZMQPublisher(StreamWriter):
         try:
             while not self._closed:
                 if timeout is not None and (time.time() - start_t) > timeout:
-                    Logger.debug(f"ZMQPublisher: wait_connect timed out after {timeout}s (endpoint={self.endpoint})")
+                    Logger.debug(f"ZmqStreamWriter: wait_connect timed out after {timeout}s (endpoint={self.endpoint})")
                     break
                 try:
                     evt = zmq.utils.monitor.recv_monitor_message(self._monitor)

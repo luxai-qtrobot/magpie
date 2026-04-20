@@ -1,5 +1,5 @@
 """
-Shared helpers for MQTT CLI tools (mqtt_publish, mqtt_subscribe, mqtt_request).
+Shared helpers for MQTT CLI tools (mqtt_write, mqtt_read, mqtt_request).
 """
 import argparse
 import json

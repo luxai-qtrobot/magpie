@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.nodes.source_node import SourceNode
-from luxai.magpie.transport.zmq.zmq_publisher import ZMQPublisher
+from luxai.magpie.transport.zmq.zmq_stream_writer import ZmqStreamWriter
 from luxai.magpie.frames import DictFrame
 
 
@@ -100,7 +100,7 @@ class MagpiePublisher(SourceNode):
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="magpie-publish",
+        prog="magpie-write",
         description="Publish a message to a Magpie ZMQ topic",
     )
 
@@ -144,7 +144,7 @@ def main():
     parser.add_argument(
         "--bind",
         action="store_true",
-        help="Bind the publisher socket (e.g. tcp://*:5555). Default is connect mode.",
+        help="Bind the writer socket (e.g. tcp://*:5555). Default is connect mode.",
     )
 
     parser.add_argument(
@@ -164,24 +164,24 @@ def main():
     Logger.set_level("DEBUG" if args.verbose else "INFO")
 
     if not args.raw and not isinstance(args.data, dict):
-        Logger.error("magpie-publish: payload must be a dict when not using --raw")
+        Logger.error("magpie-write: payload must be a dict when not using --raw")
         return 2
     if args.rate is not None and args.rate <= 0:
-        Logger.error("magpie-publish: --rate must be > 0")
+        Logger.error("magpie-write: --rate must be > 0")
         return 2
     if args.loop and args.rate is None:
-        Logger.error("magpie-publish: --loop requires --rate")
+        Logger.error("magpie-write: --loop requires --rate")
         return 2
     if args.count is not None and args.count <= 0:
-        Logger.info("magpie-publish: --count <= 0, nothing to do")
+        Logger.info("magpie-write: --count <= 0, nothing to do")
         return 0
 
-    publisher = ZMQPublisher(endpoint=args.endpoint, bind=args.bind)
-    publisher.wait_connect(timeout=args.timeout)
+    publisher = ZmqStreamWriter(endpoint=args.endpoint, bind=args.bind)
+    writer.wait_connect(timeout=args.timeout)
 
     node = MagpiePublisher(
         name="MagpiePublisher",
-        stream_writer = publisher,
+        stream_writer = writer,
         setup_kwargs={
             "topic": args.topic,
             "data": args.data,

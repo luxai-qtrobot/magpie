@@ -22,7 +22,7 @@ The top of the stack. The user works with exactly four methods regardless of whi
 
 | Pattern | Write side | Read side |
 |---|---|---|
-| Pub/Sub | `writer.write(data, topic)` | `reader.read(timeout)` |
+| Streaming | `writer.write(data, topic)` | `reader.read(timeout)` |
 | RPC | `requester.call(request, timeout)` | `responder.handle_once(handler, timeout)` |
 
 No transport-specific code ever leaks into user space.
@@ -49,17 +49,17 @@ The base classes absorb all the complexity: threading, queuing, lifecycle, and e
 Three transports are implemented today. Each follows the same pattern: a thin class that subclasses one of the four ABCs and implements only the transport-specific methods.
 
 **ZMQ** — high-performance local/LAN messaging:
-- `ZMQPublisher` / `ZMQSubscriber` — PUB/SUB sockets, topic-prefixed multipart frames
+- `ZmqStreamWriter` / `ZmqStreamReader` — PUB/SUB sockets, topic-prefixed multipart frames
 - `ZMQRpcRequester` / `ZMQRpcResponder` — DEALER/ROUTER sockets with a dedicated asyncio-style I/O thread and per-call ACK/reply demux
 
 **MQTT** — broker-based messaging for LAN and internet:
-- `MqttPublisher` / `MqttSubscriber` — publish/subscribe via a shared `MqttConnection`; MQTT push model bridged to pull via an internal `queue.Queue`
-- `MqttRpcRequester` / `MqttRpcResponder` — RPC over pub/sub topics with `rid`-based correlation and a `reply_to` topic per requester instance
-- `MqttConnection` is the shared resource — one TCP connection to the broker multiplexed across all publishers, subscribers, and RPC components
+- `MqttStreamWriter` / `MqttStreamReader` — publish/subscribe via a shared `MqttConnection`; MQTT push model bridged to pull via an internal `queue.Queue`
+- `MqttRpcRequester` / `MqttRpcResponder` — RPC over MQTT topics with `rid`-based correlation and a `reply_to` topic per requester instance
+- `MqttConnection` is the shared resource — one TCP connection to the broker multiplexed across all writers, readers, and RPC components
 
 **WebRTC** — P2P streaming over the internet:
-- `WebRTCPublisher` routes internally by frame type: `ImageFrame*` → native video media track (H.264/VP8), `AudioFrame*` → native audio media track (Opus), everything else → data channel (msgpack)
-- `WebRTCSubscriber` / `WebRTCRpcRequester` / `WebRTCRpcResponder` — data channel and media track reception
+- `WebRtcStreamWriter` routes internally by frame type: `ImageFrame*` → native video media track (H.264/VP8), `AudioFrame*` → native audio media track (Opus), everything else → data channel (msgpack)
+- `WebRtcStreamReader` / `WebRTCRpcRequester` / `WebRTCRpcResponder` — data channel and media track reception
 - `WebRTCConnection` owns the `RTCPeerConnection`, runs an asyncio loop in a background thread, and handles signaling via any existing MAGPIE transport (MQTT or ZMQ) — role (offer/answer) is auto-negotiated, no user configuration required
 - `WebRTCOptions` provides STUN/TURN server configuration, codec preferences, and session identification
 
@@ -95,16 +95,16 @@ The actual bytes on the network:
 
 Adding a transport — say, WebSocket or shared memory — requires implementing at most **five methods** split across two to four thin classes. The base classes handle everything else.
 
-For pub/sub:
+For streaming:
 
 ```python
 from luxai.magpie.transport.stream_writer import StreamWriter
 from luxai.magpie.transport.stream_reader import StreamReader
 
-class MyPublisher(StreamWriter):
+class MyStreamWriter(StreamWriter):
     def __init__(self, endpoint, queue_size=10):
         # set up your transport connection here
-        super().__init__(name="MyPublisher", queue_size=queue_size)
+        super().__init__(name="MyStreamWriter", queue_size=queue_size)
 
     def _transport_write(self, data: object, topic: str):
         # serialize and send — that's it
@@ -115,10 +115,10 @@ class MyPublisher(StreamWriter):
         self._socket.close()
 
 
-class MySubscriber(StreamReader):
+class MyStreamReader(StreamReader):
     def __init__(self, endpoint, topic, queue_size=10):
         # set up your transport connection here
-        super().__init__(name="MySubscriber", queue_size=queue_size)
+        super().__init__(name="MyStreamReader", queue_size=queue_size)
 
     def _transport_read_blocking(self, timeout=None):
         # block until data arrives, return (data, topic)
@@ -180,11 +180,11 @@ class JsonSerializer(BaseSerializer):
 Pass it at construction time — the transport classes all accept a `serializer` parameter:
 
 ```python
-pub = ZMQPublisher("tcp://*:5555", serializer=JsonSerializer())
-sub = ZMQSubscriber("tcp://127.0.0.1:5555", serializer=JsonSerializer())
+pub = ZmqStreamWriter("tcp://*:5555", serializer=JsonSerializer())
+sub = ZmqStreamReader("tcp://127.0.0.1:5555", serializer=JsonSerializer())
 
-pub = MqttPublisher(conn, serializer=JsonSerializer())
-sub = MqttSubscriber(conn, topic="sensors/temp", serializer=JsonSerializer())
+pub = MqttStreamWriter(conn, serializer=JsonSerializer())
+sub = MqttStreamReader(conn, topic="sensors/temp", serializer=JsonSerializer())
 ```
 
 ---

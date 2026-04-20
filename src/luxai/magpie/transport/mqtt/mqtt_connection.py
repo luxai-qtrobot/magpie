@@ -59,8 +59,8 @@ class MqttConnection:
     """
     Shared MQTT broker connection.
 
-    Create **one** instance per broker and pass it to ``MqttPublisher``,
-    ``MqttSubscriber``, ``MqttRpcRequester``, and ``MqttRpcResponder``.
+    Create **one** instance per broker and pass it to ``MqttStreamWriter``,
+    ``MqttStreamReader``, ``MqttRpcRequester``, and ``MqttRpcResponder``.
     This reuses a single TCP/WebSocket connection to the broker instead of
     opening a new one for every messaging component.
 
@@ -79,8 +79,8 @@ class MqttConnection:
         )
         conn.connect()          # blocks until connected or timeout
 
-        pub = MqttPublisher(conn)
-        sub = MqttSubscriber(conn, topic="sensors/temp")
+        pub = MqttStreamWriter(conn)
+        sub = MqttStreamReader(conn, topic="sensors/temp")
 
         # ... use pub / sub ...
 
@@ -379,7 +379,7 @@ class MqttConnection:
         """
         Gracefully disconnect from the broker and stop the network loop.
 
-        Does not close individual publisher/subscriber resources — call their
+        Does not close individual writer/reader resources — call their
         ``close()`` methods before calling ``disconnect()``.
         """
         self._closing = True

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-magpie-subscribe-webrtc — subscribe to a WebRTC data channel topic.
+magpie-read-webrtc — subscribe to a WebRTC data channel topic.
 
 Usage:
-    magpie-subscribe-webrtc <session_id> <topic> [options]
-    magpie-subscribe-webrtc my-session /robot/state --signaling mqtt://127.0.0.1:1883
+    magpie-read-webrtc <session_id> <topic> [options]
+    magpie-read-webrtc my-session /robot/state --signaling mqtt://127.0.0.1:1883
 """
 import argparse
 import json
@@ -14,7 +14,7 @@ from collections import deque
 from time import perf_counter
 
 try:
-    from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCSubscriber  # noqa: F401
+    from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamReader  # noqa: F401
 except ImportError:
     from luxai.magpie.utils.logger import Logger
     Logger.error(
@@ -30,11 +30,11 @@ from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="magpie-subscribe-webrtc",
+        prog="magpie-read-webrtc",
         description="Subscribe to a Magpie WebRTC topic and print received messages",
     )
     parser.add_argument("session_id", type=str,
-                        help="Shared session name — must match the publisher (e.g. my-robot)")
+                        help="Shared session name — must match the writer (e.g. my-robot)")
     parser.add_argument("topic", type=str,
                         help="Topic to subscribe to (e.g. /robot/state)")
     parser.add_argument("--signaling", type=str, default="mqtt://127.0.0.1:1883",
@@ -71,13 +71,13 @@ def main():
                               mqtt_params=args.mqtt_params)
     conn = WebRTCConnection(signaler=signaler, reconnect=True,
                             options=build_webrtc_options(args.webrtc_options, args.signaling))
-    sub = WebRTCSubscriber(conn, topic=args.topic)
+    sub = WebRtcStreamReader(conn, topic=args.topic)
 
     msg_count = 0
     ts_window = deque(maxlen=max(2, args.hz_window))
     last_hz_print = perf_counter()
 
-    Logger.info(f"magpie-subscribe-webrtc: subscribed to '{args.topic}' on session '{args.session_id}'")
+    Logger.info(f"magpie-read-webrtc: subscribed to '{args.topic}' on session '{args.session_id}'")
 
     try:
         conn.connect()
@@ -106,11 +106,11 @@ def main():
                     print(data)
 
             if args.once:
-                Logger.info("magpie-subscribe-webrtc: received one message (--once). Exiting.")
+                Logger.info("magpie-read-webrtc: received one message (--once). Exiting.")
                 break
 
     except KeyboardInterrupt:
-        Logger.info("magpie-subscribe-webrtc: interrupted.")
+        Logger.info("magpie-read-webrtc: interrupted.")
 
     sub.close()
     conn.disconnect()

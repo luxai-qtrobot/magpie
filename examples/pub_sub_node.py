@@ -3,46 +3,46 @@ import time
 
 from luxai.magpie.utils import Logger
 from luxai.magpie.nodes import BaseNode
-from luxai.magpie.transport import ZMQPublisher
-from luxai.magpie.transport import ZMQSubscriber
+from luxai.magpie.transport import ZmqStreamWriter
+from luxai.magpie.transport import ZmqStreamReader
 
 
 class PubNode(BaseNode):
     def __init__(self, endpoint:str):
-        self.publisher = ZMQPublisher(endpoint)
+        self.publisher = ZmqStreamWriter(endpoint)
         super().__init__()
 
     def process(self):
         Logger.info(f"{self.name} is publishing...")
-        self.publisher.write({'name': 'Bob', 'last': 'Job'})
+        self.writer.write({'name': 'Bob', 'last': 'Job'})
         time.sleep(1)
 
     def cleanup(self):
-        self.publisher.close()
+        self.writer.close()
         Logger.info(f"{self.name} is cleaning up...")
         
     def terminate(self, timeout=None):
-        self.publisher.close()
+        self.writer.close()
         return super().terminate(timeout)
 
 
 class SubNode(BaseNode):
     def __init__(self, endpoint:str):
-        self.subscriber = ZMQSubscriber(endpoint)
+        self.subscriber = ZmqStreamReader(endpoint)
         super().__init__()
         
     
     def process(self):        
-        data = self.subscriber.read()
+        data = self.reader.read()
         if data:
             Logger.info(f"{self.name} received {data}")
 
     def cleanup(self):
-        self.subscriber.close()
+        self.reader.close()
         Logger.info(f"{self.name} is cleaning up...")
 
     def terminate(self, timeout=None):
-        self.subscriber.close()
+        self.reader.close()
         return super().terminate(timeout)
 
 

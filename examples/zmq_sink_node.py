@@ -7,8 +7,8 @@ from luxai.magpie.transport import StreamWriter
 from luxai.magpie.utils import Logger
 from luxai.magpie.nodes import SourceNode
 from luxai.magpie.nodes import SinkNode
-from luxai.magpie.transport import ZMQPublisher
-from luxai.magpie.transport import ZMQSubscriber
+from luxai.magpie.transport import ZmqStreamWriter
+from luxai.magpie.transport import ZmqStreamReader
 
 
 class SubNode(SinkNode):
@@ -25,8 +25,8 @@ class SubNode(SinkNode):
 
 if __name__ == '__main__':
 
-    node2 = SubNode(name='node2', stream_reader=ZMQSubscriber("tcp://127.0.0.1:5555"), setup_kwargs={'delay': 2})    
-    node3 = SubNode(name='node3', stream_reader=ZMQSubscriber("tcp://127.0.0.1:5555"), setup_kwargs={'delay': 0.5})    
+    node2 = SubNode(name='node2', stream_reader=ZmqStreamReader("tcp://127.0.0.1:5555"), setup_kwargs={'delay': 2})    
+    node3 = SubNode(name='node3', stream_reader=ZmqStreamReader("tcp://127.0.0.1:5555"), setup_kwargs={'delay': 0.5})    
     
     try:
         time.sleep(100)

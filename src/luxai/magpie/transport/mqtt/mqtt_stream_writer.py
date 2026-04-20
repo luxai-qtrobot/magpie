@@ -6,11 +6,11 @@ from luxai.magpie.utils.logger import Logger
 from .mqtt_connection import MqttConnection
 
 
-class MqttPublisher(StreamWriter):
+class MqttStreamWriter(StreamWriter):
     """
-    MQTT-based stream publisher.
+    MQTT-based stream writer.
 
-    Serializes messages and publishes them to the broker through a shared
+    Serializes messages and writes them to the broker through a shared
     ``MqttConnection``.  The *topic* argument of ``write()`` becomes the
     MQTT topic — standard MQTT topic conventions apply (``/`` separators,
     no wildcards on publish).
@@ -20,7 +20,7 @@ class MqttPublisher(StreamWriter):
         conn = MqttConnection("mqtt://broker.example.com:1883")
         conn.connect()
 
-        pub = MqttPublisher(conn)
+        pub = MqttStreamWriter(conn)
         pub.write({"sensor": "temp", "value": 22.5}, topic="sensors/temperature")
 
         pub.close()
@@ -52,8 +52,8 @@ class MqttPublisher(StreamWriter):
         self._qos = qos
         self._retain = retain
 
-        super().__init__(name="MqttPublisher", queue_size=queue_size)
-        Logger.debug(f"MqttPublisher: ready (broker={connection.uri})")
+        super().__init__(name="MqttStreamWriter", queue_size=queue_size)
+        Logger.debug(f"MqttStreamWriter: ready (broker={connection.uri})")
 
     # ------------------------------------------------------------------
     # StreamWriter implementation
@@ -61,14 +61,14 @@ class MqttPublisher(StreamWriter):
 
     def _transport_write(self, data: object, topic: str):
         if not topic:
-            Logger.warning("MqttPublisher: write() called without a topic — message dropped.")
+            Logger.warning("MqttStreamWriter: write() called without a topic — message dropped.")
             return
         try:
             payload = self._serializer.serialize(data)
             self._connection.publish(topic, payload, qos=self._qos, retain=self._retain)
         except Exception as e:
-            Logger.warning(f"MqttPublisher: write failed on topic '{topic}': {e}")
+            Logger.warning(f"MqttStreamWriter: write failed on topic '{topic}': {e}")
 
     def _transport_close(self):
-        # The connection is shared; closing the publisher does NOT disconnect.
-        Logger.debug("MqttPublisher: closed.")
+        # The connection is shared; closing the stream writer does NOT disconnect.
+        Logger.debug("MqttStreamWriter: closed.")

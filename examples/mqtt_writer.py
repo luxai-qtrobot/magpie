@@ -1,12 +1,12 @@
 """
-MQTT Publisher example.
+MQTT Writer example.
 
 Publishes a message to a topic at 1 Hz using the free HiveMQ public test broker.
 No account or credentials required.
 
-Usage (run together with mqtt_subscriber.py):
-    Terminal 1:  python examples/mqtt_publisher.py
-    Terminal 2:  python examples/mqtt_subscriber.py
+Usage (run together with mqtt_reader.py):
+    Terminal 1:  python examples/mqtt_writer.py
+    Terminal 2:  python examples/mqtt_reader.py
 
 TIP: Change TOPIC to something unique to avoid collisions with other users
      sharing the same public broker.
@@ -14,12 +14,12 @@ TIP: Change TOPIC to something unique to avoid collisions with other users
 
 import time
 
-from luxai.magpie.transport import MqttConnection, MqttPublisher
+from luxai.magpie.transport import MqttConnection, MqttStreamWriter
 from luxai.magpie.utils import Logger
 
 
 BROKER_URI = "mqtt://broker.hivemq.com:1883"
-TOPIC      = "magpie/examples/pubsub"
+TOPIC      = "magpie/examples/stream"
 
 
 if __name__ == "__main__":
@@ -30,7 +30,7 @@ if __name__ == "__main__":
         Logger.error("Could not connect to broker — check your network connection.")
         raise SystemExit(1)
 
-    pub = MqttPublisher(conn)
+    pub = MqttStreamWriter(conn)
 
     count = 1
     while True:

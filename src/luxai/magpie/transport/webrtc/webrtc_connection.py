@@ -159,7 +159,7 @@ class WebRTCConnection:
     Shared WebRTC peer connection.
 
     Create **one** instance per peer pair and pass it to
-    ``WebRTCPublisher``, ``WebRTCSubscriber``, ``WebRTCRpcRequester``, and
+    ``WebRtcStreamWriter``, ``WebRtcStreamReader``, ``WebRTCRpcRequester``, and
     ``WebRTCRpcResponder``.
 
     The preferred way to create an instance is via the class-method shortcuts::
@@ -305,7 +305,7 @@ class WebRTCConnection:
 
         Args:
             timeout: Maximum seconds to wait for the connection to be established.
-                     ``None`` (default) waits indefinitely — matching the pub/sub
+                     ``None`` (default) waits indefinitely — matching the streaming
                      philosophy where a peer may appear at any time.
 
         Returns ``True`` on success, ``False`` on timeout or failure.
@@ -428,7 +428,7 @@ class WebRTCConnection:
         return cls(signaler=signaler, reconnect=reconnect, options=options)
 
     # ------------------------------------------------------------------
-    # Registration API (used by publisher / subscriber / rpc classes)
+    # Registration API (used by writer / reader / rpc classes)
     # ------------------------------------------------------------------
 
     def add_pub_callback(self, topic: str, callback: Callable) -> None:
@@ -670,7 +670,7 @@ class WebRTCConnection:
         Called when remote topics become known (hello or offer), so that both
         offerer and answerer always hold tracks for the full union of topics
         before SDP negotiation begins.  All tracks are sendrecv — whether a
-        track is ever pushed to (publisher) or only subscribed to (subscriber)
+        track is ever pushed to (writer) or only read by (reader)
         is entirely the application's decision.
         """
         for topic in remote_audio:

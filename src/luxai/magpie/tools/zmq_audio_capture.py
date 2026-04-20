@@ -4,7 +4,7 @@
 # Inspired by your zmq video capture code.
 #
 # Examples:
-#   # bind by default (publisher binds)
+#   # bind by default (writer binds)
 #   python zmq_audio_capture.py tcp://0.0.0.0:5556 /audio
 #
 #   # connect instead of bind
@@ -37,13 +37,13 @@ except ImportError:
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.utils.common import get_uinque_id
 from luxai.magpie.nodes.source_node import SourceNode
-from luxai.magpie.transport.zmq.zmq_publisher import ZMQPublisher
+from luxai.magpie.transport.zmq.zmq_stream_writer import ZmqStreamWriter
 from luxai.magpie.frames import AudioFrameRaw, AudioFrameFlac
 
 
 class ZmqAudioCapture(SourceNode):
     """
-    Captures audio via sounddevice and publishes frames via ZMQPublisher.
+    Captures audio via sounddevice and publishes frames via ZmqStreamWriter.
     Produces AudioFrameRaw (PCM int16) or AudioFrameFlac (compressed).
     """
 
@@ -240,7 +240,7 @@ def main():
     parser.add_argument(
         "--bind",
         action="store_true",
-        help="Bind the publisher socket instead of connecting (default: connect).",
+        help="Bind the writer socket instead of connecting (default: connect).",
     )
 
     parser.add_argument(
@@ -283,7 +283,7 @@ def main():
 
     node = ZmqAudioCapture(
         name="MagpieAudioCapture",
-        stream_writer=ZMQPublisher(
+        stream_writer=ZmqStreamWriter(
             endpoint=args.endpoint,
             bind=args.bind,
             queue_size=0,

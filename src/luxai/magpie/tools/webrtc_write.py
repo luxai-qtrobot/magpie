@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-magpie-publish-webrtc — publish messages over a WebRTC data channel.
+magpie-write-webrtc — publish messages over a WebRTC data channel.
 
 Usage:
-    magpie-publish-webrtc <session_id> <topic> <data> [options]
-    magpie-publish-webrtc my-session /robot/state '{"x":1.0}' --signaling mqtt://127.0.0.1:1883
+    magpie-write-webrtc <session_id> <topic> <data> [options]
+    magpie-write-webrtc my-session /robot/state '{"x":1.0}' --signaling mqtt://127.0.0.1:1883
 """
 import argparse
 import ast
@@ -14,7 +14,7 @@ import time
 from typing import Any, Optional
 
 try:
-    from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher  # noqa: F401
+    from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamWriter  # noqa: F401
 except ImportError:
     from luxai.magpie.utils.logger import Logger
     Logger.error(
@@ -51,11 +51,11 @@ def _parse_payload(raw: str) -> Any:
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="magpie-publish-webrtc",
+        prog="magpie-write-webrtc",
         description="Publish messages to a Magpie WebRTC topic",
     )
     parser.add_argument("session_id", type=str,
-                        help="Shared session name — must match the subscriber (e.g. my-robot)")
+                        help="Shared session name — must match the reader (e.g. my-robot)")
     parser.add_argument("topic", type=str,
                         help="Topic to publish on (e.g. /robot/state)")
     parser.add_argument("data", type=_parse_payload,
@@ -88,10 +88,10 @@ def main():
     Logger.set_level("DEBUG" if args.verbose else "INFO")
 
     if not args.raw and not isinstance(args.data, dict):
-        Logger.error("magpie-publish-webrtc: payload must be a dict when not using --raw")
+        Logger.error("magpie-write-webrtc: payload must be a dict when not using --raw")
         sys.exit(2)
     if args.rate is not None and args.rate <= 0:
-        Logger.error("magpie-publish-webrtc: --rate must be > 0")
+        Logger.error("magpie-write-webrtc: --rate must be > 0")
         sys.exit(2)
 
     signaler = build_signaler(args.signaling, args.session_id,
@@ -101,7 +101,7 @@ def main():
     conn = WebRTCConnection(signaler=signaler, reconnect=True,
                             options=build_webrtc_options(args.webrtc_options, args.signaling))
 
-    pub = WebRTCPublisher(conn)
+    pub = WebRtcStreamWriter(conn)
 
     published = 0
     try:
@@ -110,7 +110,7 @@ def main():
             payload = args.data if args.raw else DictFrame(value=args.data).to_dict()
             pub.write(payload, topic=args.topic)
             published += 1
-            Logger.info(f"magpie-publish-webrtc: published 1 message")
+            Logger.info(f"magpie-write-webrtc: published 1 message")
         else:
             frame_period = 1.0 / args.rate
             while True:
@@ -119,13 +119,13 @@ def main():
                 pub.write(payload, topic=args.topic)
                 published += 1
                 if args.count is not None and published >= args.count:
-                    Logger.info(f"magpie-publish-webrtc: published {published} messages")
+                    Logger.info(f"magpie-write-webrtc: published {published} messages")
                     break
                 elapsed = time.time() - t
                 if elapsed < frame_period:
                     time.sleep(frame_period - elapsed)
     except KeyboardInterrupt:
-        Logger.info(f"magpie-publish-webrtc: interrupted ({published} messages sent)")
+        Logger.info(f"magpie-write-webrtc: interrupted ({published} messages sent)")
 
     pub.close()
     conn.disconnect()

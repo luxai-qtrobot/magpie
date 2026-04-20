@@ -22,7 +22,7 @@
 
 ---
 
-MAGPIE is a lightweight, modular messaging engine for distributed Python systems. It provides a clean abstraction over pub/sub streams, request/response RPC, and network discovery — built on top of ZeroMQ, MQTT (via Paho), and WebRTC (via aiortc), with a pluggable transport layer.
+MAGPIE is a lightweight, modular messaging engine for distributed Python systems. It provides a clean abstraction over streams, request/response RPC, and network discovery — built on top of ZeroMQ, MQTT (via Paho), and WebRTC (via aiortc), with a pluggable transport layer.
 
 Originally developed at **[LuxAI](https://luxai.com)** for the [QTrobot](https://luxai.com/qtrobot-for-research/) ecosystem, MAGPIE is generic enough for any Python-based distributed or AI pipeline.
 
@@ -30,10 +30,10 @@ Originally developed at **[LuxAI](https://luxai.com)** for the [QTrobot](https:/
 
 ## Features
 
-- **Pub/Sub streaming** — high-throughput topic-based messaging via `StreamWriter` / `StreamReader`
+- **Topic-based streaming** — high-throughput topic-based messaging via `StreamWriter` / `StreamReader`
 - **Request/Response RPC** — synchronous and async-friendly RPC via `ZMQRpcRequester` / `ZMQRpcResponder`
-- **MQTT transport** — full pub/sub and RPC over MQTT with a shared connection; supports `mqtt://`, `mqtts://`, `ws://`, `wss://`, TLS, auth, LWT, and auto-reconnect
-- **WebRTC transport** — P2P pub/sub, video/audio streaming, and RPC over WebRTC; MQTT or ZMQ used for the initial signaling handshake, all payload traffic flows directly peer-to-peer; STUN + optional TURN for NAT traversal
+- **MQTT transport** — full streaming and RPC over MQTT with a shared connection; supports `mqtt://`, `mqtts://`, `ws://`, `wss://`, TLS, auth, LWT, and auto-reconnect
+- **WebRTC transport** — P2P streaming, video/audio, and RPC over WebRTC; MQTT or ZMQ used for the initial signaling handshake, all payload traffic flows directly peer-to-peer; STUN + optional TURN for NAT traversal
 - **Pluggable transports** — ZeroMQ, MQTT, and WebRTC today; add any custom transport without changing user code
 - **Fast serialization** — msgpack by default; bring your own serializer via the abstract interface
 - **Typed frames** — `ImageFrameJpeg`, `ImageFrameCV`, `AudioFrameRaw`, `AudioFrameFlac`, and more
@@ -54,7 +54,7 @@ For the full architecture diagram, layer-by-layer breakdown, and guides for exte
 
 ## Installation
 
-### Core (pub/sub + RPC only)
+### Core (streaming + RPC only)
 
 ```bash
 pip install luxai-magpie
@@ -68,10 +68,10 @@ pip install luxai-magpie
 | `pip install "luxai-magpie[audio]"` | Audio frames + capture/player CLI tools (numpy, soundfile, sounddevice) |
 | `pip install "luxai-magpie[video]"` | Image frames + capture/viewer CLI tools (numpy, OpenCV, simplejpeg) |
 | `pip install "luxai-magpie[discovery]"` | `magpie-discovery` CLI tool (zeroconf) |
-| `pip install "luxai-magpie[webrtc]"` | WebRTC transport — P2P pub/sub, video/audio, RPC over internet (aiortc, numpy) |
+| `pip install "luxai-magpie[webrtc]"` | WebRTC transport — P2P streaming, video/audio, RPC over internet (aiortc, numpy) |
 | `pip install "luxai-magpie[full]"` | All of the above |
 
-> **Note:** `magpie-publish`, `magpie-subscribe`, and `magpie-request` work with the base install — no extras needed (ZeroMQ is a core dependency). All CLI entry points are always registered; tools that require a missing extra will print a clear install instruction and exit.
+> **Note:** `magpie-write`, `magpie-read`, and `magpie-request` work with the base install — no extras needed (ZeroMQ is a core dependency). All CLI entry points are always registered; tools that require a missing extra will print a clear install instruction and exit.
 
 ---
 
@@ -86,38 +86,38 @@ pip install luxai-magpie
 
 ## Quick Start
 
-### Pub/Sub
+### Streaming
 
-**Publisher:**
+**Writer:**
 
 ```python
 import time
-from luxai.magpie.transport import ZMQPublisher
+from luxai.magpie.transport import ZmqStreamWriter
 
-publisher = ZMQPublisher("tcp://*:5555")
+writer = ZmqStreamWriter("tcp://*:5555")
 i = 0
 while True:
     try:
-        publisher.write({'id': i, 'value': 'hello'}, topic='/mytopic')
+        writer.write({'id': i, 'value': 'hello'}, topic='/mytopic')
         i += 1
         time.sleep(1)
     except KeyboardInterrupt:
-        publisher.close()
+        writer.close()
         break
 ```
 
-**Subscriber:**
+**Reader:**
 
 ```python
-from luxai.magpie.transport import ZMQSubscriber
+from luxai.magpie.transport import ZmqStreamReader
 
-subscriber = ZMQSubscriber("tcp://127.0.0.1:5555", topic=['/mytopic'], bind=False)
+reader = ZmqStreamReader("tcp://127.0.0.1:5555", topic=['/mytopic'], bind=False)
 while True:
     try:
-        data, topic = subscriber.read()
+        data, topic = reader.read()
         print(f"{topic}: {data}")
     except KeyboardInterrupt:
-        subscriber.close()
+        reader.close()
         break
 ```
 
@@ -158,34 +158,34 @@ while True:
         break
 ```
 
-### MQTT Pub/Sub
+### MQTT Streaming
 
 MQTT transport uses a **shared connection** object — create it once and pass it to any number of publishers or subscribers.  All four URI schemes are supported out of the box.
 
-**Publisher:**
+**Writer:**
 
 ```python
-from luxai.magpie.transport import MqttConnection, MqttPublisher
+from luxai.magpie.transport import MqttConnection, MqttStreamWriter
 
 conn = MqttConnection("mqtt://broker.hivemq.com:1883")   # or mqtts://, ws://, wss://
 conn.connect()
 
-pub = MqttPublisher(conn)
+pub = MqttStreamWriter(conn)
 pub.write({"sensor": "temp", "value": 22.5}, topic="sensors/temperature")
 
 pub.close()
 conn.disconnect()
 ```
 
-**Subscriber:**
+**Reader:**
 
 ```python
-from luxai.magpie.transport import MqttConnection, MqttSubscriber
+from luxai.magpie.transport import MqttConnection, MqttStreamReader
 
 conn = MqttConnection("mqtt://broker.hivemq.com:1883")
 conn.connect()
 
-sub = MqttSubscriber(conn, topic="sensors/temperature")  # wildcards + and # supported
+sub = MqttStreamReader(conn, topic="sensors/temperature")  # wildcards + and # supported
 while True:
     try:
         data, topic = sub.read(timeout=5.0)
@@ -279,9 +279,9 @@ conn = MqttConnection(
 conn.connect()
 ```
 
-### WebRTC Pub/Sub
+### WebRTC Streaming
 
-WebRTC transport enables **P2P communication over the internet** — no broker in the data path after the initial handshake.  A `WebRTCConnection` is shared by all publishers and subscribers, mirroring the `MqttConnection` pattern.
+WebRTC transport enables **P2P communication over the internet** — no broker in the data path after the initial handshake.  A `WebRTCConnection` is shared by all writers and readers, mirroring the `MqttConnection` pattern.
 
 Signaling (SDP offer/answer + ICE candidates) is exchanged via a **`WebRtcSignaler`** — an abstract transport that carries only the short handshake messages.  Two implementations are built in:
 
@@ -304,10 +304,10 @@ Video and audio frames are carried over native WebRTC **RTP media tracks** (H.26
 
 With `use_media_channels=False`, all video/audio frames fall back to the `magpie` data channel (JPEG-compressed for images, configurable via `media_channel_jpeg_quality`).
 
-**Publisher (MQTT signaling — internet):**
+**Writer (MQTT signaling — internet):**
 
 ```python
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher, WebRTCOptions
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamWriter, WebRTCOptions
 
 conn = WebRTCConnection.with_mqtt(
     "mqtt://broker.hivemq.com:1883", session_id="my-robot",
@@ -315,7 +315,7 @@ conn = WebRTCConnection.with_mqtt(
 )
 conn.connect()
 
-pub = WebRTCPublisher(conn)
+pub = WebRtcStreamWriter(conn)
 pub.write({"motor": [0.1, 0.2, 0.3]}, topic="robot/state")         # → data channel
 pub.write(ImageFrameRaw(...), topic="/camera/color/image")           # → RTP video track
 
@@ -323,10 +323,10 @@ pub.close()
 conn.disconnect()
 ```
 
-**Publisher (ZMQ signaling — LAN / localhost):**
+**Writer (ZMQ signaling — LAN / localhost):**
 
 ```python
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher, WebRTCOptions
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamWriter, WebRTCOptions
 
 # One peer binds (bind=True), the other connects (bind=False, the default).
 conn = WebRTCConnection.with_zmq(
@@ -335,17 +335,17 @@ conn = WebRTCConnection.with_zmq(
 )
 conn.connect()
 
-pub = WebRTCPublisher(conn)
+pub = WebRtcStreamWriter(conn)
 pub.write(ImageFrameRaw(...), topic="/camera/color/image")
 
 pub.close()
 conn.disconnect()
 ```
 
-**Subscriber:**
+**Reader:**
 
 ```python
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCSubscriber, WebRTCOptions
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamReader, WebRTCOptions
 
 conn = WebRTCConnection.with_mqtt(
     "mqtt://broker.hivemq.com:1883", session_id="my-robot",
@@ -353,8 +353,8 @@ conn = WebRTCConnection.with_mqtt(
 )
 conn.connect()
 
-sub  = WebRTCSubscriber(conn, topic="robot/state")              # data channel
-vsub = WebRTCSubscriber(conn, topic="/camera/color/image")      # RTP video track
+sub  = WebRtcStreamReader(conn, topic="robot/state")              # data channel
+vsub = WebRtcStreamReader(conn, topic="/camera/color/image")      # RTP video track
 
 data, _  = sub.read(timeout=5.0)
 frame, _ = vsub.read(timeout=5.0)   # ImageFrameRaw
@@ -375,7 +375,7 @@ conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883",
                                   session_id="my-robot", options=opts)
 conn.connect()
 
-pub = WebRTCPublisher(conn)
+pub = WebRtcStreamWriter(conn)
 pub.write(color_frame, topic="/camera/color/image")   # → RTP track 1
 pub.write(depth_frame, topic="/camera/depth/image")   # → RTP track 2
 pub.write(audio_frame, topic="/mic/audio/stream")     # → RTP audio track
@@ -508,7 +508,7 @@ with ZconfDiscovery() as disc:
 
 ## ZMQ Command-Line Tools
 
-`magpie-publish`, `magpie-subscribe`, and `magpie-request` work out of the box — no extras needed:
+`magpie-write`, `magpie-read`, and `magpie-request` work out of the box — no extras needed:
 
 ```bash
 pip install luxai-magpie
@@ -522,39 +522,39 @@ pip install "luxai-magpie[video]"      # magpie-video-capture, magpie-video-view
 pip install "luxai-magpie[discovery]"  # magpie-discovery
 ```
 
-### `magpie-publish` — Publish a message to a topic
+### `magpie-write` — Publish a message to a topic
 
 ```bash
 # Publish a dict payload once
-magpie-publish tcp://127.0.0.1:5555 /mytopic '{"name": "Bob", "value": 42}'
+magpie-write tcp://127.0.0.1:5555 /mytopic '{"name": "Bob", "value": 42}'
 
 # Publish at 10 Hz continuously
-magpie-publish tcp://127.0.0.1:5555 /mytopic '{"x": 1}' --rate 10 --loop
+magpie-write tcp://127.0.0.1:5555 /mytopic '{"x": 1}' --rate 10 --loop
 
 # Publish a plain string (no DictFrame wrapping)
-magpie-publish tcp://127.0.0.1:5555 /events "hello world" --raw
+magpie-write tcp://127.0.0.1:5555 /events "hello world" --raw
 
 # Load payload from a JSON file
-magpie-publish tcp://127.0.0.1:5555 /mytopic @payload.json --rate 5 --count 20
+magpie-write tcp://127.0.0.1:5555 /mytopic @payload.json --rate 5 --count 20
 
-# Bind the socket (publisher listens, subscribers connect)
-magpie-publish tcp://*:5555 /mytopic '{"status": "ok"}' --bind
+# Bind the socket (writer listens, readers connect)
+magpie-write tcp://*:5555 /mytopic '{"status": "ok"}' --bind
 ```
 
-### `magpie-subscribe` — Subscribe to a topic and print messages
+### `magpie-read` — Subscribe to a topic and print messages
 
 ```bash
 # Subscribe to a single topic
-magpie-subscribe tcp://127.0.0.1:5555 /mytopic
+magpie-read tcp://127.0.0.1:5555 /mytopic
 
 # Subscribe to multiple topics
-magpie-subscribe tcp://127.0.0.1:5555 /topic1 /topic2
+magpie-read tcp://127.0.0.1:5555 /topic1 /topic2
 
 # Pretty-print JSON output
-magpie-subscribe tcp://127.0.0.1:5555 /mytopic --pretty
+magpie-read tcp://127.0.0.1:5555 /mytopic --pretty
 
-# Bind the subscriber socket (publisher connects to it)
-magpie-subscribe tcp://*:5555 /mytopic --bind
+# Bind the reader socket (writer connects to it)
+magpie-read tcp://*:5555 /mytopic --bind
 ```
 
 ### `magpie-request` — Send an RPC request and print the response
@@ -576,7 +576,7 @@ magpie-request tcp://127.0.0.1:5556 '{"query": "status"}' --pretty
 # Stream camera 0 in JPEG at 30 fps, binding on port 5555
 magpie-video-capture tcp://*:5555 /camera --encoder jpeg
 
-# Stream at 720p, 15 fps, connect to an existing subscriber
+# Stream at 720p, 15 fps, connect to an existing reader
 magpie-video-capture tcp://127.0.0.1:5555 /camera --size 1280 720 --framerate 15
 ```
 
@@ -595,7 +595,7 @@ magpie-audio-capture tcp://*:5556 /audio
 # Stream at 48 kHz stereo, FLAC-compressed
 magpie-audio-capture tcp://*:5556 /audio --samplerate 48000 --channels 2 --encoder flac
 
-# Connect to a listening subscriber instead of binding
+# Connect to a listening reader instead of binding
 magpie-audio-capture tcp://127.0.0.1:5556 /audio
 ```
 
@@ -633,51 +633,51 @@ pip install "luxai-magpie[cli,mqtt]"
 
 The MQTT tools mirror their ZMQ counterparts but target an MQTT broker instead of a ZMQ endpoint. The broker URI is a required positional argument. Advanced connection options (QoS, authentication, TLS, …) are loaded from a JSON file via `--mqtt-params @myparams.json`.
 
-### `magpie-publish-mqtt` — Publish a message to an MQTT topic
+### `magpie-write-mqtt` — Publish a message to an MQTT topic
 
 ```bash
 # Publish a dict payload once
-magpie-publish-mqtt mqtt://broker.hivemq.com:1883 /magpie/test "{'data': 'hello'}"
+magpie-write-mqtt mqtt://broker.hivemq.com:1883 /magpie/test "{'data': 'hello'}"
 
 # Publish at 5 Hz continuously
-magpie-publish-mqtt mqtt://broker.hivemq.com:1883 /magpie/test "{'x': 1}" --rate 5 --loop
+magpie-write-mqtt mqtt://broker.hivemq.com:1883 /magpie/test "{'x': 1}" --rate 5 --loop
 
 # Publish a fixed number of messages
-magpie-publish-mqtt mqtt://broker.hivemq.com:1883 /magpie/test "{'x': 1}" --rate 10 --count 20
+magpie-write-mqtt mqtt://broker.hivemq.com:1883 /magpie/test "{'x': 1}" --rate 10 --count 20
 
 # Publish a plain value without DictFrame wrapping
-magpie-publish-mqtt mqtt://broker.hivemq.com:1883 /magpie/events "hello world" --raw
+magpie-write-mqtt mqtt://broker.hivemq.com:1883 /magpie/events "hello world" --raw
 
 # Load payload from a JSON file
-magpie-publish-mqtt mqtt://broker.hivemq.com:1883 /magpie/test @payload.json --rate 5
+magpie-write-mqtt mqtt://broker.hivemq.com:1883 /magpie/test @payload.json --rate 5
 
 # Set the MQTT retain flag
-magpie-publish-mqtt mqtt://broker.hivemq.com:1883 /magpie/status "{'state': 'ready'}" --retain
+magpie-write-mqtt mqtt://broker.hivemq.com:1883 /magpie/status "{'state': 'ready'}" --retain
 
 # Connect to a password-protected broker with custom QoS
-magpie-publish-mqtt mqtt://broker.example.com:1883 /magpie/test "{'x': 1}" --mqtt-params @myparams.json
+magpie-write-mqtt mqtt://broker.example.com:1883 /magpie/test "{'x': 1}" --mqtt-params @myparams.json
 ```
 
-### `magpie-subscribe-mqtt` — Subscribe to an MQTT topic and print messages
+### `magpie-read-mqtt` — Subscribe to an MQTT topic and print messages
 
 ```bash
 # Subscribe to a topic
-magpie-subscribe-mqtt mqtt://broker.hivemq.com:1883 /magpie/test
+magpie-read-mqtt mqtt://broker.hivemq.com:1883 /magpie/test
 
 # Subscribe with MQTT wildcard patterns
-magpie-subscribe-mqtt mqtt://broker.hivemq.com:1883 "/magpie/+"
+magpie-read-mqtt mqtt://broker.hivemq.com:1883 "/magpie/+"
 
 # Pretty-print JSON output
-magpie-subscribe-mqtt mqtt://broker.hivemq.com:1883 /magpie/test --pretty
+magpie-read-mqtt mqtt://broker.hivemq.com:1883 /magpie/test --pretty
 
 # Receive one message and exit
-magpie-subscribe-mqtt mqtt://broker.hivemq.com:1883 /magpie/test --once --pretty
+magpie-read-mqtt mqtt://broker.hivemq.com:1883 /magpie/test --once --pretty
 
 # Show message frequency
-magpie-subscribe-mqtt mqtt://broker.hivemq.com:1883 /magpie/test --hz
+magpie-read-mqtt mqtt://broker.hivemq.com:1883 /magpie/test --hz
 
 # Connect with authentication and TLS
-magpie-subscribe-mqtt mqtts://broker.example.com:8883 /magpie/test --mqtt-params @myparams.json
+magpie-read-mqtt mqtts://broker.example.com:8883 /magpie/test --mqtt-params @myparams.json
 ```
 
 ### `magpie-request-mqtt` — Send an MQTT RPC request and print the response
@@ -758,39 +758,39 @@ WebRTC CLI tools always take a `session_id` positional argument — both peers m
 | `mqtt://host:port` | MQTT broker | Works over the internet; requires `[mqtt]` extra |
 | `tcp://host:port` | ZMQ PAIR socket | Broker-less LAN; one side needs `--bind` |
 
-### `magpie-publish-webrtc` — Publish messages over a WebRTC data channel
+### `magpie-write-webrtc` — Publish messages over a WebRTC data channel
 
 ```bash
 # Publish once via MQTT signaling (HiveMQ public broker)
-magpie-publish-webrtc my-robot /robot/state '{"x": 1.0}' \
+magpie-write-webrtc my-robot /robot/state '{"x": 1.0}' \
     --signaling mqtt://broker.hivemq.com:1883
 
 # Publish at 10 Hz until stopped
-magpie-publish-webrtc my-robot /robot/state '{"x": 1.0}' \
+magpie-write-webrtc my-robot /robot/state '{"x": 1.0}' \
     --signaling mqtt://broker.hivemq.com:1883 --rate 10
 
-# LAN / localhost: publisher binds the ZMQ signaling socket
-magpie-publish-webrtc my-robot /robot/state '{"x": 1.0}' \
+# LAN / localhost: writer binds the ZMQ signaling socket
+magpie-write-webrtc my-robot /robot/state '{"x": 1.0}' \
     --signaling tcp://127.0.0.1:5555 --bind
 ```
 
-### `magpie-subscribe-webrtc` — Subscribe to a WebRTC data channel topic
+### `magpie-read-webrtc` — Subscribe to a WebRTC data channel topic
 
 ```bash
 # Subscribe via MQTT signaling
-magpie-subscribe-webrtc my-robot /robot/state \
+magpie-read-webrtc my-robot /robot/state \
     --signaling mqtt://broker.hivemq.com:1883 --pretty
 
-# LAN: subscriber connects (no --bind)
-magpie-subscribe-webrtc my-robot /robot/state \
+# LAN: reader connects (no --bind)
+magpie-read-webrtc my-robot /robot/state \
     --signaling tcp://127.0.0.1:5555
 
 # Receive one message and exit
-magpie-subscribe-webrtc my-robot /robot/state \
+magpie-read-webrtc my-robot /robot/state \
     --signaling mqtt://broker.hivemq.com:1883 --once
 
 # Show message frequency
-magpie-subscribe-webrtc my-robot /robot/state \
+magpie-read-webrtc my-robot /robot/state \
     --signaling mqtt://broker.hivemq.com:1883 --hz
 ```
 

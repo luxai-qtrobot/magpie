@@ -18,7 +18,7 @@ except ImportError:
 from luxai.magpie.utils.common import get_uinque_id
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.nodes.source_node import SourceNode
-from luxai.magpie.transport.zmq.zmq_publisher import ZMQPublisher
+from luxai.magpie.transport.zmq.zmq_stream_writer import ZmqStreamWriter
 from luxai.magpie.frames.image import ImageFrameCV, ImageFrameJpeg, ImageFrameRaw
 
 
@@ -104,7 +104,7 @@ def main():
     parser.add_argument(
         "--bind",
         action="store_true",
-        help="Bind the publisher socket instead of connecting (default: connect).",
+        help="Bind the writer socket instead of connecting (default: connect).",
     )
 
     parser.add_argument("-c", "--camera", 
@@ -131,7 +131,7 @@ def main():
     args = parser.parse_args()
 
     node = ZmqVideoCapture(name='MagpieVideoCapture',
-                            stream_writer=ZMQPublisher(
+                            stream_writer=ZmqStreamWriter(
                                 endpoint=args.endpoint,                                 
                                 bind=args.bind,
                                 queue_size=0,                                 

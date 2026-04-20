@@ -22,7 +22,7 @@ class MqttRpcRequester(RpcRequester):
     """
     MQTT-based RPC requester.
 
-    Implements request/reply over MQTT pub/sub following this protocol:
+    Implements request/reply over MQTT topics following this protocol:
 
     1. Requester publishes to  ``<service_name>/rpc/req``:
        ``{"rid": "<ulid>", "reply_to": "<reply_topic>", "payload": <request>}``

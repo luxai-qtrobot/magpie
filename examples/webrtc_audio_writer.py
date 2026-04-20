@@ -1,5 +1,5 @@
 """
-WebRTC Audio Publisher example.
+WebRTC Audio Writer example.
 
 Captures microphone audio and streams it over a native WebRTC RTP audio track (Opus).
 The topic must be declared in ``WebRTCOptions.audio_topics`` so both sides
@@ -17,7 +17,7 @@ import numpy as np
 import sounddevice as sd
 
 from luxai.magpie.frames.audio import AudioFrameRaw
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCPublisher, WebRTCOptions
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamWriter, WebRTCOptions
 from luxai.magpie.utils import Logger
 
 
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     if not conn.connect():
         raise SystemExit("WebRTC handshake timed out.")
 
-    pub = WebRTCPublisher(conn)
+    pub = WebRtcStreamWriter(conn)
     audio_q: queue.Queue = queue.Queue(maxsize=8)
 
     def audio_callback(indata, frames, time_info, status):

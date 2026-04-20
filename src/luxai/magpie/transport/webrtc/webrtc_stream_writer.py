@@ -3,9 +3,9 @@ from luxai.magpie.utils.logger import Logger
 from .webrtc_connection import WebRTCConnection
 
 
-class WebRTCPublisher(StreamWriter):
+class WebRtcStreamWriter(StreamWriter):
     """
-    WebRTC-based stream publisher.
+    WebRTC-based stream writer.
 
     Writes frames or arbitrary data to the remote peer over a shared
     ``WebRTCConnection``.  Routing:
@@ -29,7 +29,7 @@ class WebRTCPublisher(StreamWriter):
         )
         conn.connect()
 
-        pub = WebRTCPublisher(conn)
+        pub = WebRtcStreamWriter(conn)
         pub.write(frame, topic="/camera/color/image")   # → RTP video track
         pub.write({"speed": 1.0}, topic="robot/cmd")    # → data channel
         pub.close()
@@ -47,8 +47,8 @@ class WebRTCPublisher(StreamWriter):
         """
         self._connection = connection
 
-        super().__init__(name="WebRTCPublisher", queue_size=queue_size)
-        Logger.debug("WebRTCPublisher: ready.")
+        super().__init__(name="WebRtcStreamWriter", queue_size=queue_size)
+        Logger.debug("WebRtcStreamWriter: ready.")
 
     # ------------------------------------------------------------------
     # StreamWriter implementation
@@ -66,8 +66,8 @@ class WebRTCPublisher(StreamWriter):
             self._write_data(data, topic)
 
     def _transport_close(self):
-        # Connection is shared — closing the publisher does not disconnect.
-        Logger.debug("WebRTCPublisher: closed.")
+        # Connection is shared — closing the writer does not disconnect.
+        Logger.debug("WebRtcStreamWriter: closed.")
 
     # ------------------------------------------------------------------
     # Internal routing
@@ -86,11 +86,11 @@ class WebRTCPublisher(StreamWriter):
                 av_frame = self._image_frame_to_av(frame)
                 track.push(av_frame)
             except Exception as e:
-                Logger.warning(f"WebRTCPublisher: video RTP conversion failed for '{topic}': {e}")
+                Logger.warning(f"WebRtcStreamWriter: video RTP conversion failed for '{topic}': {e}")
         elif use_media:
             if not in_topics and topic:
                 Logger.warning(
-                    f"WebRTCPublisher: topic='{topic}' is not in video_topics — "
+                    f"WebRtcStreamWriter: topic='{topic}' is not in video_topics — "
                     "falling back to magpie-media data channel."
                 )
             try:
@@ -98,7 +98,7 @@ class WebRTCPublisher(StreamWriter):
                     {"kind": "video", "topic": topic, "payload": frame.to_dict()}
                 )
             except Exception as e:
-                Logger.warning(f"WebRTCPublisher: magpie-media video send failed: {e}")
+                Logger.warning(f"WebRtcStreamWriter: magpie-media video send failed: {e}")
         else:
             # use_media_channels=False — compress to JPEG, send via drop-stale queue
             jpeg_frame = self._ensure_jpeg(frame)
@@ -109,7 +109,7 @@ class WebRTCPublisher(StreamWriter):
             })
 
     _OPUS_FRAME_SIZE = 960   # samples @ 48000 Hz = 20 ms, the standard Opus frame size
-    _audio_logged = False   # log audio frame properties once per publisher instance
+    _audio_logged = False   # log audio frame properties once per writer instance
 
     def _write_audio(self, frame: "AudioFrameRaw", topic: str):
         """Send an audio frame: RTP track (if topic declared) → magpie-media → magpie."""
@@ -124,7 +124,7 @@ class WebRTCPublisher(StreamWriter):
                 if not self.__class__._audio_logged:
                     self.__class__._audio_logged = True
                     Logger.debug(
-                        f"WebRTCPublisher audio: in=({frame.sample_rate}Hz, "
+                        f"WebRtcStreamWriter audio: in=({frame.sample_rate}Hz, "
                         f"{frame.channels}ch, {frame.bit_depth}bit, "
                         f"{len(frame.data)}bytes={len(frame.data)//(frame.channels*frame.bit_depth//8)}samples) "
                         f"→ av=({av_frame.sample_rate}Hz, "
@@ -152,11 +152,11 @@ class WebRTCPublisher(StreamWriter):
                     out.sample_rate = self._OPUS_FRAME_SIZE * 50  # 960 * 50 = 48000
                     track.push(out)
             except Exception as e:
-                Logger.warning(f"WebRTCPublisher: audio RTP conversion failed for '{topic}': {e}")
+                Logger.warning(f"WebRtcStreamWriter: audio RTP conversion failed for '{topic}': {e}")
         elif use_media:
             if not in_topics and topic:
                 Logger.warning(
-                    f"WebRTCPublisher: topic='{topic}' is not in audio_topics — "
+                    f"WebRtcStreamWriter: topic='{topic}' is not in audio_topics — "
                     "falling back to magpie-media data channel."
                 )
             try:
@@ -164,7 +164,7 @@ class WebRTCPublisher(StreamWriter):
                     {"kind": "audio", "topic": topic, "payload": frame.to_dict()}
                 )
             except Exception as e:
-                Logger.warning(f"WebRTCPublisher: magpie-media audio send failed: {e}")
+                Logger.warning(f"WebRtcStreamWriter: magpie-media audio send failed: {e}")
         else:
             conn.enqueue_media_send({
                 "type":    "media",
@@ -175,7 +175,7 @@ class WebRTCPublisher(StreamWriter):
     def _write_data(self, data: object, topic: str):
         """Serialize and send arbitrary data over the data channel."""
         if not topic:
-            Logger.warning("WebRTCPublisher: write() called without a topic — dropping.")
+            Logger.warning("WebRtcStreamWriter: write() called without a topic — dropping.")
             return
         from luxai.magpie.frames.frame import Frame
         if isinstance(data, Frame):
@@ -214,14 +214,14 @@ class WebRTCPublisher(StreamWriter):
             )
         else:
             raise ValueError(
-                f"WebRTCPublisher: cannot JPEG-compress ImageFrame "
+                f"WebRtcStreamWriter: cannot JPEG-compress ImageFrame "
                 f"with format='{frame.format}' — raw BGR/RGB required."
             )
 
         quality = self._connection._options.media_channel_jpeg_quality
         ok, buf = cv2.imencode(".jpg", arr, [cv2.IMWRITE_JPEG_QUALITY, quality])
         if not ok:
-            raise RuntimeError("WebRTCPublisher: cv2.imencode failed.")
+            raise RuntimeError("WebRtcStreamWriter: cv2.imencode failed.")
 
         return ImageFrameJpeg(data=buf.tobytes(), width=frame.width, height=frame.height)
 
@@ -252,13 +252,13 @@ class WebRTCPublisher(StreamWriter):
             )
         else:
             raise ValueError(
-                f"WebRTCPublisher: cannot convert ImageFrame "
+                f"WebRtcStreamWriter: cannot convert ImageFrame "
                 f"format='{frame.format}' to av.VideoFrame"
             )
 
         if arr.ndim == 3 and arr.shape[2] == 4:
             raise ValueError(
-                f"WebRTCPublisher: 4-channel frames (RGBA/BGRA) are not supported. "
+                f"WebRtcStreamWriter: 4-channel frames (RGBA/BGRA) are not supported. "
                 "Convert to 3-channel (RGB/BGR) before publishing."
             )
 
@@ -279,18 +279,18 @@ class WebRTCPublisher(StreamWriter):
 
         if frame.format != "PCM":
             raise ValueError(
-                f"WebRTCPublisher: cannot convert AudioFrame "
+                f"WebRtcStreamWriter: cannot convert AudioFrame "
                 f"format='{frame.format}' — only PCM is supported"
             )
 
         if frame.bit_depth not in (16, 32):
             raise ValueError(
-                f"WebRTCPublisher: unsupported bit_depth={frame.bit_depth} — only 16 and 32 are supported"
+                f"WebRtcStreamWriter: unsupported bit_depth={frame.bit_depth} — only 16 and 32 are supported"
             )
 
         if frame.channels > 2:
             raise ValueError(
-                f"WebRTCPublisher: unsupported channels={frame.channels} — only mono (1) and stereo (2) are supported"
+                f"WebRtcStreamWriter: unsupported channels={frame.channels} — only mono (1) and stereo (2) are supported"
             )
 
         dtype = np.int16 if frame.bit_depth == 16 else np.int32

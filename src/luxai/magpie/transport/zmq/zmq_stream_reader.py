@@ -6,12 +6,12 @@ from luxai.magpie.serializer.msgpack_serializer import MsgpackSerializer
 from .zmq_utils import zmq
 
 
-class ZMQSubscriber(StreamReader):
+class ZmqStreamReader(StreamReader):
     """
-    ZMQSubscriber class.
-    
-    This class represents a subscriber in a ZeroMQ publish-subscribe pattern. 
-    It listens to a specified endpoint and topic for incoming messages, 
+    ZmqStreamReader class.
+
+    This class represents a stream reader in a ZeroMQ channel.
+    It listens to a specified endpoint and topic for incoming messages,
     which are then deserialized using the specified serializer.
     """
 
@@ -25,7 +25,7 @@ class ZMQSubscriber(StreamReader):
         delivery: str = "reliable",   # "reliable" or "latest"
     ):
         """
-        Initializes the ZMQSubscriber class.
+        Initializes the ZmqStreamReader class.
 
         Args:
             endpoint (str): ZeroMQ endpoint (tcp://*, inproc://name, ipc://...).
@@ -72,10 +72,10 @@ class ZMQSubscriber(StreamReader):
                 self.socket.setsockopt(zmq.SUBSCRIBE, t.encode())
 
         # Start StreamReader background reader thread
-        super().__init__(name='ZMQSubscriber', queue_size=queue_size)
+        super().__init__(name='ZmqStreamReader', queue_size=queue_size)
 
         Logger.debug(
-            f"ZMQSubscriber is ready ({action} at {self.endpoint} "
+            f"ZmqStreamReader is ready ({action} at {self.endpoint} "
             f"for topics: {self.topics}, delivery={self.delivery}, queue_size={self.queue_size})"
         )
 

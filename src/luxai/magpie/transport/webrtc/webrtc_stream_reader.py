@@ -6,9 +6,9 @@ from luxai.magpie.utils.logger import Logger
 from .webrtc_connection import WebRTCConnection
 
 
-class WebRTCSubscriber(StreamReader):
+class WebRtcStreamReader(StreamReader):
     """
-    WebRTC-based stream subscriber.
+    WebRTC-based stream reader.
 
     Receives frames or data published by the remote peer over a shared
     ``WebRTCConnection``.  The *topic* parameter controls routing:
@@ -19,11 +19,11 @@ class WebRTCSubscriber(StreamReader):
       ``read()`` returns ``ImageFrameRaw``.
     * If *topic* is in ``connection.audio_topics`` → RTP audio track;
       ``read()`` returns ``AudioFrameRaw``.
-    * Any other topic → data channel pub/sub.
+    * Any other topic → data channel streaming.
 
     **use_media_channels=False**:
 
-    * Any topic → data channel pub/sub; video/audio frames are topic-routed
+    * Any topic → data channel streaming; video/audio frames are topic-routed
       via the ``magpie-media`` unreliable data channel.
 
     Usage::
@@ -35,11 +35,11 @@ class WebRTCSubscriber(StreamReader):
         conn.connect()
 
         # Video frames (RTP track)
-        vsub = WebRTCSubscriber(conn, topic="/camera/color/image")
+        vsub = WebRtcStreamReader(conn, topic="/camera/color/image")
         frame, _ = vsub.read(timeout=5.0)   # ImageFrameRaw
 
         # General data
-        sub = WebRTCSubscriber(conn, topic="robot/state")
+        sub = WebRtcStreamReader(conn, topic="robot/state")
         data, topic = sub.read(timeout=5.0)
 
         vsub.close()
@@ -72,15 +72,15 @@ class WebRTCSubscriber(StreamReader):
             self._kind = "audio"
         else:
             if use_media and topic:
-                # Topic not declared in options — route as data channel pub/sub.
+                # Topic not declared in options — route as data channel streaming.
                 # This is expected for non-media topics; only warn if it looks
                 # like the user intended a media topic but forgot to declare it.
                 pass
             self._connection.add_pub_callback(topic, self._on_data_message)
             self._kind = "data"
 
-        super().__init__(name="WebRTCSubscriber", queue_size=queue_size)
-        Logger.debug(f"WebRTCSubscriber: subscribed to '{topic}' (kind={self._kind}).")
+        super().__init__(name="WebRtcStreamReader", queue_size=queue_size)
+        Logger.debug(f"WebRtcStreamReader: subscribed to '{topic}' (kind={self._kind}).")
 
     # ------------------------------------------------------------------
     # Internal callbacks (called from WebRTCConnection routing)
@@ -103,7 +103,7 @@ class WebRTCSubscriber(StreamReader):
             return self._msg_queue.get(timeout=timeout)
         except Empty:
             raise TimeoutError(
-                f"WebRTCSubscriber: no data received"
+                f"WebRtcStreamReader: no data received"
                 + (f" within {timeout}s" if timeout is not None else "")
             )
 
@@ -114,4 +114,4 @@ class WebRTCSubscriber(StreamReader):
             self._connection.remove_audio_callback(self._topic, self._on_media_frame)
         else:
             self._connection.remove_pub_callback(self._topic, self._on_data_message)
-        Logger.debug(f"WebRTCSubscriber: unsubscribed from '{self._topic}'.")
+        Logger.debug(f"WebRtcStreamReader: unsubscribed from '{self._topic}'.")

@@ -1,7 +1,7 @@
 """
 Unit tests for the MQTT transport layer.
 
-All tests in TestMqttPublisher, TestMqttSubscriber, TestMqttRpcRequester, and
+All tests in TestMqttStreamWriter, TestMqttStreamReader, TestMqttRpcRequester, and
 TestMqttRpcResponder run entirely in-process using FakeMqttConnection — no
 network or real broker is required.
 
@@ -22,10 +22,10 @@ import paho.mqtt.client as _paho
 from luxai.magpie.serializer.msgpack_serializer import MsgpackSerializer
 from luxai.magpie.transport.mqtt.mqtt_connection import _parse_mqtt_uri
 from luxai.magpie.transport.mqtt.mqtt_options import MqttOptions
-from luxai.magpie.transport.mqtt.mqtt_publisher import MqttPublisher
+from luxai.magpie.transport.mqtt.mqtt_stream_writer import MqttStreamWriter
 from luxai.magpie.transport.mqtt.mqtt_rpc_requester import MqttRpcRequester
 from luxai.magpie.transport.mqtt.mqtt_rpc_responder import MqttRpcResponder
-from luxai.magpie.transport.mqtt.mqtt_subscriber import MqttSubscriber
+from luxai.magpie.transport.mqtt.mqtt_stream_reader import MqttStreamReader
 
 _SERIALIZER = MsgpackSerializer()
 
@@ -137,14 +137,14 @@ class TestMqttUriParsing(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# MqttPublisher tests
+# MqttStreamWriter tests
 # ---------------------------------------------------------------------------
 
-class TestMqttPublisher(unittest.TestCase):
+class TestMqttStreamWriter(unittest.TestCase):
 
     def setUp(self):
         self.conn = FakeMqttConnection()
-        self.pub = MqttPublisher(self.conn, queue_size=5)
+        self.pub = MqttStreamWriter(self.conn, queue_size=5)
 
     def tearDown(self):
         self.pub.close()
@@ -173,7 +173,7 @@ class TestMqttPublisher(unittest.TestCase):
 
     def test_qos_override_forwarded_to_publish(self):
         conn = FakeMqttConnection()
-        pub = MqttPublisher(conn, qos=2)
+        pub = MqttStreamWriter(conn, qos=2)
         pub.write({"a": 1}, topic="t/a")
         time.sleep(0.1)
         _, _, qos, _ = conn.published[0]
@@ -186,14 +186,14 @@ class TestMqttPublisher(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# MqttSubscriber tests
+# MqttStreamReader tests
 # ---------------------------------------------------------------------------
 
-class TestMqttSubscriber(unittest.TestCase):
+class TestMqttStreamReader(unittest.TestCase):
 
     def setUp(self):
         self.conn = FakeMqttConnection()
-        self.sub = MqttSubscriber(self.conn, topic="sensor/temp")
+        self.sub = MqttStreamReader(self.conn, topic="sensor/temp")
 
     def tearDown(self):
         self.sub.close()
@@ -223,7 +223,7 @@ class TestMqttSubscriber(unittest.TestCase):
 
     def test_wildcard_subscription(self):
         conn = FakeMqttConnection()
-        sub = MqttSubscriber(conn, topic="sensor/+")
+        sub = MqttStreamReader(conn, topic="sensor/+")
         conn.inject_message("sensor/temp", _SERIALIZER.serialize({"t": 1}))
         conn.inject_message("sensor/humidity", _SERIALIZER.serialize({"h": 2}))
         r1, t1 = sub.read(timeout=2.0)
@@ -243,8 +243,8 @@ class TestMqttSubscriber(unittest.TestCase):
 
     def test_multiple_subscribers_same_topic(self):
         conn = FakeMqttConnection()
-        sub1 = MqttSubscriber(conn, topic="t/shared")
-        sub2 = MqttSubscriber(conn, topic="t/shared")
+        sub1 = MqttStreamReader(conn, topic="t/shared")
+        sub2 = MqttStreamReader(conn, topic="t/shared")
         payload = _SERIALIZER.serialize({"x": 99})
         conn.inject_message("t/shared", payload)
         d1, _ = sub1.read(timeout=2.0)
@@ -491,10 +491,10 @@ class TestMqttIntegration(unittest.TestCase):
         sub_conn = self._make_conn("-sub")
 
         topic = f"magpie/ci/{_UNIQUE}/ps"
-        sub = MqttSubscriber(sub_conn, topic=topic)
+        sub = MqttStreamReader(sub_conn, topic=topic)
         time.sleep(0.5)    # let subscription propagate
 
-        pub = MqttPublisher(pub_conn)
+        pub = MqttStreamWriter(pub_conn)
         pub.write({"hello": "mqtt"}, topic=topic)
 
         data, recv_topic = sub.read(timeout=_BROKER_TIMEOUT)
@@ -545,11 +545,11 @@ class TestMqttIntegration(unittest.TestCase):
         conn3 = self._make_conn("-ms3")
 
         topic = f"magpie/ci/{_UNIQUE}/multi"
-        sub1 = MqttSubscriber(conn1, topic=topic)
-        sub2 = MqttSubscriber(conn2, topic=topic)
+        sub1 = MqttStreamReader(conn1, topic=topic)
+        sub2 = MqttStreamReader(conn2, topic=topic)
         time.sleep(0.5)
 
-        pub = MqttPublisher(conn3)
+        pub = MqttStreamWriter(conn3)
         pub.write({"broadcast": 1}, topic=topic)
 
         d1, _ = sub1.read(timeout=_BROKER_TIMEOUT)

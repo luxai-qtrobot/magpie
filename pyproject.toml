@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "luxai-magpie"
-description = "MAGPIE is a lightweight, modular messaging engine providing high-performance pub/sub and RPC over pluggable transports."
+description = "MAGPIE is a lightweight, modular messaging engine providing high-performance streaming and RPC over pluggable transports."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
 authors = [
     { name = "LuxAI S.A." }
 ]
-keywords = ["messaging", "rpc", "pubsub", "zeromq", "distributed-systems", "robotics", "middleware"]
+keywords = ["messaging", "rpc", "streaming", "zeromq", "distributed-systems", "robotics", "middleware"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
@@ -105,14 +105,14 @@ magpie-audio-capture = "luxai.magpie.tools.zmq_audio_capture:main"
 magpie-video-viewer = "luxai.magpie.tools.zmq_video_viewer:main"
 magpie-video-capture = "luxai.magpie.tools.zmq_video_capture:main"
 magpie-request = "luxai.magpie.tools.zmq_request:main"
-magpie-subscribe = "luxai.magpie.tools.zmq_subscribe:main"
-magpie-publish = "luxai.magpie.tools.zmq_publish:main"
+magpie-read = "luxai.magpie.tools.zmq_read:main"
+magpie-write = "luxai.magpie.tools.zmq_write:main"
 magpie-discovery = "luxai.magpie.tools.zconf_discovery:main"
-magpie-publish-mqtt = "luxai.magpie.tools.mqtt_publish:main"
-magpie-subscribe-mqtt = "luxai.magpie.tools.mqtt_subscribe:main"
+magpie-write-mqtt = "luxai.magpie.tools.mqtt_write:main"
+magpie-read-mqtt = "luxai.magpie.tools.mqtt_read:main"
 magpie-request-mqtt = "luxai.magpie.tools.mqtt_request:main"
-magpie-publish-webrtc = "luxai.magpie.tools.webrtc_publish:main"
-magpie-subscribe-webrtc = "luxai.magpie.tools.webrtc_subscribe:main"
+magpie-write-webrtc = "luxai.magpie.tools.webrtc_write:main"
+magpie-read-webrtc = "luxai.magpie.tools.webrtc_read:main"
 magpie-request-webrtc = "luxai.magpie.tools.webrtc_request:main"
 magpie-video-capture-webrtc = "luxai.magpie.tools.webrtc_video_capture:main"
 magpie-video-viewer-webrtc = "luxai.magpie.tools.webrtc_video_viewer:main"

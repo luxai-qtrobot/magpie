@@ -1,19 +1,19 @@
 """
-WebRTC Subscriber example.
+WebRTC Reader example.
 
 Receives sensor data from the robot over a WebRTC data channel.
 
-Usage (run together with webrtc_publisher.py):
-    Terminal 1 (robot):    python examples/webrtc_publisher.py
-    Terminal 2 (operator): python examples/webrtc_subscriber.py
+Usage (run together with webrtc_writer.py):
+    Terminal 1 (robot):    python examples/webrtc_writer.py
+    Terminal 2 (operator): python examples/webrtc_reader.py
 """
 
-from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCSubscriber, WebRTCOptions
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamReader, WebRTCOptions
 from luxai.magpie.utils import Logger
 
 
 BROKER_URI = "mqtt://broker.hivemq.com:1883"  # MQTT broker used only for signaling
-SESSION_ID = "magpie/examples/webrtc"         # shared rendezvous name — must match publisher
+SESSION_ID = "magpie/examples/webrtc"         # shared rendezvous name — must match writer
 TOPIC      = "robot/state"                    # topic to subscribe to
 
 
@@ -34,14 +34,14 @@ if __name__ == "__main__":
     if not conn.connect():
         raise SystemExit("WebRTC handshake timed out.")
 
-    sub = WebRTCSubscriber(conn, topic=TOPIC)
+    sub = WebRtcStreamReader(conn, topic=TOPIC)
 
     while True:
         try:
             data, topic = sub.read(timeout=5.0)
             Logger.info(f"received on '{topic}': {data}")
         except TimeoutError:
-            Logger.warning("no data — is webrtc_publisher.py running?")
+            Logger.warning("no data — is webrtc_writer.py running?")
         except KeyboardInterrupt:
             Logger.info("stopping...")
             break

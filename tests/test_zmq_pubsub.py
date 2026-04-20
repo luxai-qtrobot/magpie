@@ -3,8 +3,8 @@
 import unittest
 import time
 import socket
-from luxai.magpie.transport import ZMQPublisher
-from luxai.magpie.transport import ZMQSubscriber
+from luxai.magpie.transport import ZmqStreamWriter
+from luxai.magpie.transport import ZmqStreamReader
 
 
 def _free_tcp_port():
@@ -16,7 +16,7 @@ def _free_tcp_port():
     return port
 
 
-def _collect_messages(sub: ZMQSubscriber, expected_count: int, timeout: float = 2.0):
+def _collect_messages(sub: ZmqStreamReader, expected_count: int, timeout: float = 2.0):
     """Read up to expected_count messages from subscriber within timeout."""
     messages = []
     t0 = time.perf_counter()
@@ -44,7 +44,7 @@ class TestZmqPubSubTCP(unittest.TestCase):
         endpoint = f"tcp://127.0.0.1:{port}"
 
         # PUBLISHER: bind=True → bind()
-        pub = ZMQPublisher(
+        pub = ZmqStreamWriter(
             endpoint=endpoint,
             queue_size=10,
             bind=True,
@@ -54,7 +54,7 @@ class TestZmqPubSubTCP(unittest.TestCase):
         time.sleep(0.5)  # let ZMQ handshake
 
         # SUBSCRIBER first: bind False → connect()
-        sub = ZMQSubscriber(
+        sub = ZmqStreamReader(
             endpoint=endpoint,
             topic="test",
             queue_size=10,
@@ -94,7 +94,7 @@ class TestZmqPubSubTCP(unittest.TestCase):
         endpoint = f"tcp://127.0.0.1:{port}"
 
         # queue_size = 0 → no background writer queue/thread
-        pub0 = ZMQPublisher(
+        pub0 = ZmqStreamWriter(
             endpoint=endpoint,
             queue_size=0,
             bind=True,
@@ -109,7 +109,7 @@ class TestZmqPubSubTCP(unittest.TestCase):
         port2 = _free_tcp_port()
         endpoint2 = f"tcp://127.0.0.1:{port2}"
 
-        pub1 = ZMQPublisher(
+        pub1 = ZmqStreamWriter(
             endpoint=endpoint2,
             queue_size=1,
             bind=True,
@@ -124,7 +124,7 @@ class TestZmqPubSubTCP(unittest.TestCase):
         port = _free_tcp_port()
         endpoint = f"tcp://127.0.0.1:{port}"
 
-        sub = ZMQSubscriber(
+        sub = ZmqStreamReader(
             endpoint=endpoint,
             topic="",
             queue_size=10,
@@ -133,7 +133,7 @@ class TestZmqPubSubTCP(unittest.TestCase):
         )
         time.sleep(0.5)  # let ZMQ handshake
 
-        pub = ZMQPublisher(
+        pub = ZmqStreamWriter(
             endpoint=endpoint,
             queue_size=10,
             bind=False,
@@ -161,14 +161,14 @@ class TestZmqPubSubInproc(unittest.TestCase):
         endpoint = "inproc://test-basic"
 
         # For inproc: best practice is pub.bind first, then sub.connect.
-        pub = ZMQPublisher(
+        pub = ZmqStreamWriter(
             endpoint=endpoint,
             queue_size=10,
             bind=True,
             delivery="reliable",
         )
 
-        sub = ZMQSubscriber(
+        sub = ZmqStreamReader(
             endpoint=endpoint,
             topic="test",
             queue_size=10,
@@ -202,7 +202,7 @@ class TestZmqPubSubInproc(unittest.TestCase):
     def test_publisher_queue_size_zero_and_one_inproc(self):
         # queue_size=0
         endpoint0 = "inproc://qs0"
-        pub0 = ZMQPublisher(
+        pub0 = ZmqStreamWriter(
             endpoint=endpoint0,
             queue_size=0,
             bind=True,
@@ -214,7 +214,7 @@ class TestZmqPubSubInproc(unittest.TestCase):
 
         # queue_size=1
         endpoint1 = "inproc://qs1"
-        pub1 = ZMQPublisher(
+        pub1 = ZmqStreamWriter(
             endpoint=endpoint1,
             queue_size=1,
             bind=True,
@@ -228,14 +228,14 @@ class TestZmqPubSubInproc(unittest.TestCase):
     def test_clean_shutdown_inproc(self):
         endpoint = "inproc://clean"
 
-        pub = ZMQPublisher(
+        pub = ZmqStreamWriter(
             endpoint=endpoint,
             queue_size=10,
             bind=True,
             delivery="reliable",
         )
 
-        sub = ZMQSubscriber(
+        sub = ZmqStreamReader(
             endpoint=endpoint,
             topic="",
             queue_size=10,
