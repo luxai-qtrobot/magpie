@@ -43,7 +43,7 @@ def _parse_payload(raw: str) -> Any:
     return data
 
 
-class MagpiePublisher(SourceNode):
+class MagpieWriter(SourceNode):
 
     def setup(self, topic: str, data: Any,
               rate: Optional[float] = None,
@@ -54,9 +54,9 @@ class MagpiePublisher(SourceNode):
         self.data = data
         self.rate = rate          # Hz, or None for single-shot
         self.count = count        # max messages, or None
-        self.loop = loop          # publish forever
-        self.raw = raw            # publish as-is, skip DictFrame wrapping
-        self._published = 0
+        self.loop = loop          # write forever
+        self.raw = raw            # write as-is, skip DictFrame wrapping
+        self._written = 0
         self._write_time = None
 
         Logger.info(f"{self.name}: topic={self.topic} rate={self.rate}Hz "
@@ -67,24 +67,24 @@ class MagpiePublisher(SourceNode):
 
         payload = self.data if self.raw else DictFrame(value=self.data).to_dict()
 
-        # Single-shot: publish once then just idle (socket stays alive until Ctrl+C)
+        # Single-shot: write once then just idle (socket stays alive until Ctrl+C)
         if self.rate is None:
-            if self._published == 0:
+            if self._written == 0:
                 self.stream_writer.write(payload, topic=self.topic)
-                self._published += 1
-                Logger.info(f"{self.name}: published 1 message")
+                self._written += 1
+                Logger.info(f"{self.name}: wrote 1 message")
             else:
                 time.sleep(0.5)
                 self.terminate()
             return
 
-        # Rate mode: publish then sleep to maintain rate
-        if self.count is None or self._published < self.count:
+        # Rate mode: write then sleep to maintain rate
+        if self.count is None or self._written < self.count:
             self.stream_writer.write(payload, topic=self.topic)
-            self._published += 1
+            self._written += 1
 
-            if self.count is not None and self._published >= self.count:
-                Logger.info(f"{self.name}: published {self._published} messages (waiting for Ctrl+C)")
+            if self.count is not None and self._written >= self.count:
+                Logger.info(f"{self.name}: wrote {self._written} messages (waiting for Ctrl+C)")
         else:
             # count reached, just idle
             time.sleep(0.5)
@@ -101,7 +101,7 @@ class MagpiePublisher(SourceNode):
 def main():
     parser = argparse.ArgumentParser(
         prog="magpie-write",
-        description="Publish a message to a Magpie ZMQ topic",
+        description="Write a message to a Magpie ZMQ topic",
     )
 
     parser.add_argument(
@@ -123,23 +123,23 @@ def main():
         "--rate",
         type=float,
         default=None,
-        help="Publish rate in Hz. If omitted, publishes once and keeps socket alive.",
+        help="Write rate in Hz. If omitted, writes once and keeps socket alive.",
     )
     parser.add_argument(
         "--count",
         type=int,
         default=None,
-        help="Number of messages to publish (requires --rate). If omitted with --loop: publish forever.",
+        help="Number of messages to write (requires --rate). If omitted with --loop: write forever.",
     )
     parser.add_argument(
         "--loop",
         action="store_true",
-        help="Publish forever (requires --rate).",
+        help="Write forever (requires --rate).",
     )
     parser.add_argument(
         "--raw",
         action="store_true",
-        help="Publish payload as-is without wrapping in DictFrame. Allows any type, not just dict.",
+        help="Write payload as-is without wrapping in DictFrame. Allows any type, not just dict.",
     )
     parser.add_argument(
         "--bind",
@@ -176,11 +176,11 @@ def main():
         Logger.info("magpie-write: --count <= 0, nothing to do")
         return 0
 
-    publisher = ZmqStreamWriter(endpoint=args.endpoint, bind=args.bind)
+    writer = ZmqStreamWriter(endpoint=args.endpoint, bind=args.bind)
     writer.wait_connect(timeout=args.timeout)
 
-    node = MagpiePublisher(
-        name="MagpiePublisher",
+    node = MagpieWriter(
+        name="MagpieWriter",
         stream_writer = writer,
         setup_kwargs={
             "topic": args.topic,

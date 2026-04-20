@@ -23,7 +23,7 @@ from luxai.magpie.transport import MqttConnection, MqttStreamReader
 from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options
 
 
-class MqttSubscribe(SinkNode):
+class MqttRead(SinkNode):
     """
     Magpie MQTT topic reader tool.
 
@@ -44,7 +44,7 @@ class MqttSubscribe(SinkNode):
         self.ts_window = deque(maxlen=max(2, hz_window))
         self.last_stats_print = perf_counter()
 
-        Logger.info(f"{self.name}: subscribing")
+        Logger.info(f"{self.name}: reading")
 
     def process(self):
         _data = self.stream_reader.read(timeout=None)
@@ -87,7 +87,7 @@ class MqttSubscribe(SinkNode):
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="magpie-read-mqtt",
-        description="Subscribe to a Magpie MQTT topic and print received messages",
+        description="Read from a Magpie MQTT topic and print received messages",
     )
 
     p.add_argument(
@@ -161,10 +161,10 @@ def main():
         Logger.error(f"magpie-read-mqtt: could not connect to broker at {ns.uri}")
         return 1
 
-    subscriber = MqttStreamReader(conn, topic=ns.topic)
+    reader = MqttStreamReader(conn, topic=ns.topic)
 
-    node = MqttSubscribe(
-        name="MagpieMqttSubscribe",
+    node = MqttRead(
+        name="MagpieMqttRead",
         stream_reader=reader,
         setup_kwargs={
             "pretty": ns.pretty,

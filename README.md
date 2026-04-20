@@ -39,7 +39,7 @@ Originally developed at **[LuxAI](https://luxai.com)** for the [QTrobot](https:/
 - **Typed frames** — `ImageFrameJpeg`, `ImageFrameCV`, `AudioFrameRaw`, `AudioFrameFlac`, and more
 - **Node helpers** — base classes (`SourceNode`, `SinkNode`, `ServerNode`, …) to build robust streaming services
 - **Network discovery** — mDNS/Zeroconf node advertisement and scanning via `ZconfDiscovery`
-- **CLI tools** — ready-to-use command-line tools for publishing, subscribing, RPC over both ZMQ and MQTT, video/audio streaming, and discovery
+- **CLI tools** — ready-to-use command-line tools for writing, reading, RPC over both ZMQ and MQTT, video/audio streaming, and discovery
 - **Lightweight core** — heavy media dependencies (NumPy, OpenCV, soundfile, aiortc) are fully opt-in
 
 ---
@@ -160,7 +160,7 @@ while True:
 
 ### MQTT Streaming
 
-MQTT transport uses a **shared connection** object — create it once and pass it to any number of publishers or subscribers.  All four URI schemes are supported out of the box.
+MQTT transport uses a **shared connection** object — create it once and pass it to any number of writers or readers.  All four URI schemes are supported out of the box.
 
 **Writer:**
 
@@ -522,16 +522,16 @@ pip install "luxai-magpie[video]"      # magpie-video-capture, magpie-video-view
 pip install "luxai-magpie[discovery]"  # magpie-discovery
 ```
 
-### `magpie-write` — Publish a message to a topic
+### `magpie-write` — Write a message to a topic
 
 ```bash
-# Publish a dict payload once
+# Write a dict payload once
 magpie-write tcp://127.0.0.1:5555 /mytopic '{"name": "Bob", "value": 42}'
 
-# Publish at 10 Hz continuously
+# Write at 10 Hz continuously
 magpie-write tcp://127.0.0.1:5555 /mytopic '{"x": 1}' --rate 10 --loop
 
-# Publish a plain string (no DictFrame wrapping)
+# Write a plain string (no DictFrame wrapping)
 magpie-write tcp://127.0.0.1:5555 /events "hello world" --raw
 
 # Load payload from a JSON file
@@ -541,13 +541,13 @@ magpie-write tcp://127.0.0.1:5555 /mytopic @payload.json --rate 5 --count 20
 magpie-write tcp://*:5555 /mytopic '{"status": "ok"}' --bind
 ```
 
-### `magpie-read` — Subscribe to a topic and print messages
+### `magpie-read` — Read from a topic and print messages
 
 ```bash
-# Subscribe to a single topic
+# Read from a single topic
 magpie-read tcp://127.0.0.1:5555 /mytopic
 
-# Subscribe to multiple topics
+# Read from multiple topics
 magpie-read tcp://127.0.0.1:5555 /topic1 /topic2
 
 # Pretty-print JSON output
@@ -633,19 +633,19 @@ pip install "luxai-magpie[cli,mqtt]"
 
 The MQTT tools mirror their ZMQ counterparts but target an MQTT broker instead of a ZMQ endpoint. The broker URI is a required positional argument. Advanced connection options (QoS, authentication, TLS, …) are loaded from a JSON file via `--mqtt-params @myparams.json`.
 
-### `magpie-write-mqtt` — Publish a message to an MQTT topic
+### `magpie-write-mqtt` — Write a message to an MQTT topic
 
 ```bash
-# Publish a dict payload once
+# Write a dict payload once
 magpie-write-mqtt mqtt://broker.hivemq.com:1883 /magpie/test "{'data': 'hello'}"
 
-# Publish at 5 Hz continuously
+# Write at 5 Hz continuously
 magpie-write-mqtt mqtt://broker.hivemq.com:1883 /magpie/test "{'x': 1}" --rate 5 --loop
 
-# Publish a fixed number of messages
+# Write a fixed number of messages
 magpie-write-mqtt mqtt://broker.hivemq.com:1883 /magpie/test "{'x': 1}" --rate 10 --count 20
 
-# Publish a plain value without DictFrame wrapping
+# Write a plain value without DictFrame wrapping
 magpie-write-mqtt mqtt://broker.hivemq.com:1883 /magpie/events "hello world" --raw
 
 # Load payload from a JSON file
@@ -658,13 +658,13 @@ magpie-write-mqtt mqtt://broker.hivemq.com:1883 /magpie/status "{'state': 'ready
 magpie-write-mqtt mqtt://broker.example.com:1883 /magpie/test "{'x': 1}" --mqtt-params @myparams.json
 ```
 
-### `magpie-read-mqtt` — Subscribe to an MQTT topic and print messages
+### `magpie-read-mqtt` — Read from an MQTT topic and print messages
 
 ```bash
-# Subscribe to a topic
+# Read from a topic
 magpie-read-mqtt mqtt://broker.hivemq.com:1883 /magpie/test
 
-# Subscribe with MQTT wildcard patterns
+# Read with MQTT wildcard patterns
 magpie-read-mqtt mqtt://broker.hivemq.com:1883 "/magpie/+"
 
 # Pretty-print JSON output
@@ -758,14 +758,14 @@ WebRTC CLI tools always take a `session_id` positional argument — both peers m
 | `mqtt://host:port` | MQTT broker | Works over the internet; requires `[mqtt]` extra |
 | `tcp://host:port` | ZMQ PAIR socket | Broker-less LAN; one side needs `--bind` |
 
-### `magpie-write-webrtc` — Publish messages over a WebRTC data channel
+### `magpie-write-webrtc` — Write messages over a WebRTC data channel
 
 ```bash
-# Publish once via MQTT signaling (HiveMQ public broker)
+# Write once via MQTT signaling (HiveMQ public broker)
 magpie-write-webrtc my-robot /robot/state '{"x": 1.0}' \
     --signaling mqtt://broker.hivemq.com:1883
 
-# Publish at 10 Hz until stopped
+# Write at 10 Hz until stopped
 magpie-write-webrtc my-robot /robot/state '{"x": 1.0}' \
     --signaling mqtt://broker.hivemq.com:1883 --rate 10
 
@@ -774,10 +774,10 @@ magpie-write-webrtc my-robot /robot/state '{"x": 1.0}' \
     --signaling tcp://127.0.0.1:5555 --bind
 ```
 
-### `magpie-read-webrtc` — Subscribe to a WebRTC data channel topic
+### `magpie-read-webrtc` — Read from a WebRTC data channel topic
 
 ```bash
-# Subscribe via MQTT signaling
+# Read via MQTT signaling
 magpie-read-webrtc my-robot /robot/state \
     --signaling mqtt://broker.hivemq.com:1883 --pretty
 

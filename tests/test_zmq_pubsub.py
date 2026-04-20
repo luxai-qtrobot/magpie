@@ -17,7 +17,7 @@ def _free_tcp_port():
 
 
 def _collect_messages(sub: ZmqStreamReader, expected_count: int, timeout: float = 2.0):
-    """Read up to expected_count messages from subscriber within timeout."""
+    """Read up to expected_count messages from reader within timeout."""
     messages = []
     t0 = time.perf_counter()
     while len(messages) < expected_count and (time.perf_counter() - t0) < timeout:

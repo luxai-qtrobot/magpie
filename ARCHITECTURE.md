@@ -209,7 +209,7 @@ class LidarFrame(Frame):
             self.num_points = len(self.points)
 ```
 
-No registration call needed. The `Frame` base class metaclass handles it. The frame can now be published and received through any MAGPIE transport:
+No registration call needed. The `Frame` base class metaclass handles it. The frame can now be send and received through any MAGPIE transport:
 
 ```python
 pub.write(LidarFrame(points=scan_points, timestamp=time.time()), topic="robot/lidar")

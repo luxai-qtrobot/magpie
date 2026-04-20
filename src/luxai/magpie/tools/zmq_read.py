@@ -10,7 +10,7 @@ from luxai.magpie.nodes import SinkNode
 from luxai.magpie.transport import ZmqStreamReader
 
 
-class ZmqSubscribe(SinkNode):
+class ZmqReader(SinkNode):
     """
     Simple Magpie ZMQ topic reader tool.
 
@@ -33,7 +33,7 @@ class ZmqSubscribe(SinkNode):
         self.last_stats_print = perf_counter()
 
         Logger.info(
-            f"{self.name} subscribing to {self.stream_reader.endpoint}"
+            f"{self.name} reading from {self.stream_reader.endpoint}"
         )
 
     def process(self):
@@ -88,7 +88,7 @@ class ZmqSubscribe(SinkNode):
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="magpie-read",
-        description="Subscribe to a Magpie ZMQ topic and print received messages",
+        description="Read from a Magpie ZMQ topic and print received messages",
     )
 
     p.add_argument(
@@ -149,8 +149,8 @@ def main():
 
     Logger.set_level("DEBUG" if ns.verbose else "INFO")
 
-    node = ZmqSubscribe(
-        name="MagpieSubscribe",
+    node = ZmqReader(
+        name="MagpieReader",
         stream_reader=ZmqStreamReader(
             endpoint=ns.endpoint,
             topic=ns.topic,

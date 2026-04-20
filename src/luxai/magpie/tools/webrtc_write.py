@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-magpie-write-webrtc — publish messages over a WebRTC data channel.
+magpie-write-webrtc — write messages over a WebRTC data channel.
 
 Usage:
     magpie-write-webrtc <session_id> <topic> <data> [options]
@@ -52,12 +52,12 @@ def _parse_payload(raw: str) -> Any:
 def main():
     parser = argparse.ArgumentParser(
         prog="magpie-write-webrtc",
-        description="Publish messages to a Magpie WebRTC topic",
+        description="Write messages to a Magpie WebRTC topic",
     )
     parser.add_argument("session_id", type=str,
                         help="Shared session name — must match the reader (e.g. my-robot)")
     parser.add_argument("topic", type=str,
-                        help="Topic to publish on (e.g. /robot/state)")
+                        help="Topic to write to (e.g. /robot/state)")
     parser.add_argument("data", type=_parse_payload,
                         help="Payload as JSON/Python literal or @file.json. Must be a dict unless --raw.")
     parser.add_argument("--signaling", type=str, default="mqtt://127.0.0.1:1883",
@@ -68,11 +68,11 @@ def main():
                         help="Bind the ZMQ signaling socket (tcp:// only). "
                              "One peer must bind, the other connects.")
     parser.add_argument("--rate", type=float, default=None,
-                        help="Publish rate in Hz. If omitted, publishes once and exits.")
+                        help="Write rate in Hz. If omitted, writes once and exits.")
     parser.add_argument("--count", type=int, default=None,
-                        help="Number of messages to publish (requires --rate).")
+                        help="Number of messages to write (requires --rate).")
     parser.add_argument("--raw", action="store_true",
-                        help="Publish payload as-is without DictFrame wrapping.")
+                        help="Write payload as-is without DictFrame wrapping.")
     parser.add_argument("--timeout", type=float, default=10.0,
                         help="Signaling connection timeout in seconds, MQTT only (default: 10).")
     parser.add_argument("--mqtt-params", type=mqtt_params_type, default=None,
