@@ -170,10 +170,10 @@ from luxai.magpie.transport import MqttConnection, MqttStreamWriter
 conn = MqttConnection("mqtt://broker.hivemq.com:1883")   # or mqtts://, ws://, wss://
 conn.connect()
 
-pub = MqttStreamWriter(conn)
-pub.write({"sensor": "temp", "value": 22.5}, topic="sensors/temperature")
+writer = MqttStreamWriter(conn)
+writer.write({"sensor": "temp", "value": 22.5}, topic="sensors/temperature")
 
-pub.close()
+writer.close()
 conn.disconnect()
 ```
 
@@ -185,13 +185,13 @@ from luxai.magpie.transport import MqttConnection, MqttStreamReader
 conn = MqttConnection("mqtt://broker.hivemq.com:1883")
 conn.connect()
 
-sub = MqttStreamReader(conn, topic="sensors/temperature")  # wildcards + and # supported
+reader = MqttStreamReader(conn, topic="sensors/temperature")  # wildcards + and # supported
 while True:
     try:
-        data, topic = sub.read(timeout=5.0)
+        data, topic = reader.read(timeout=5.0)
         print(f"{topic}: {data}")
     except KeyboardInterrupt:
-        sub.close()
+        reader.close()
         break
 
 conn.disconnect()
@@ -315,11 +315,11 @@ conn = WebRTCConnection.with_mqtt(
 )
 conn.connect()
 
-pub = WebRtcStreamWriter(conn)
-pub.write({"motor": [0.1, 0.2, 0.3]}, topic="robot/state")         # → data channel
-pub.write(ImageFrameRaw(...), topic="/camera/color/image")           # → RTP video track
+writer = WebRtcStreamWriter(conn)
+writer.write({"motor": [0.1, 0.2, 0.3]}, topic="robot/state")         # → data channel
+writer.write(ImageFrameRaw(...), topic="/camera/color/image")           # → RTP video track
 
-pub.close()
+writer.close()
 conn.disconnect()
 ```
 
@@ -335,10 +335,10 @@ conn = WebRTCConnection.with_zmq(
 )
 conn.connect()
 
-pub = WebRtcStreamWriter(conn)
-pub.write(ImageFrameRaw(...), topic="/camera/color/image")
+writer = WebRtcStreamWriter(conn)
+writer.write(ImageFrameRaw(...), topic="/camera/color/image")
 
-pub.close()
+writer.close()
 conn.disconnect()
 ```
 
@@ -353,14 +353,14 @@ conn = WebRTCConnection.with_mqtt(
 )
 conn.connect()
 
-sub  = WebRtcStreamReader(conn, topic="robot/state")              # data channel
-vsub = WebRtcStreamReader(conn, topic="/camera/color/image")      # RTP video track
+reader  = WebRtcStreamReader(conn, topic="robot/state")              # data channel
+vreader = WebRtcStreamReader(conn, topic="/camera/color/image")      # RTP video track
 
-data, _  = sub.read(timeout=5.0)
-frame, _ = vsub.read(timeout=5.0)   # ImageFrameRaw
+data, _  = reader.read(timeout=5.0)
+frame, _ = vreader.read(timeout=5.0)   # ImageFrameRaw
 
-sub.close()
-vsub.close()
+reader.close()
+vreader.close()
 conn.disconnect()
 ```
 
@@ -375,10 +375,10 @@ conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883",
                                   session_id="my-robot", options=opts)
 conn.connect()
 
-pub = WebRtcStreamWriter(conn)
-pub.write(color_frame, topic="/camera/color/image")   # → RTP track 1
-pub.write(depth_frame, topic="/camera/depth/image")   # → RTP track 2
-pub.write(audio_frame, topic="/mic/audio/stream")     # → RTP audio track
+writer = WebRtcStreamWriter(conn)
+writer.write(color_frame, topic="/camera/color/image")   # → RTP track 1
+writer.write(depth_frame, topic="/camera/depth/image")   # → RTP track 2
+writer.write(audio_frame, topic="/mic/audio/stream")     # → RTP audio track
 ```
 
 ### WebRTC Request / Response RPC
