@@ -63,6 +63,7 @@ class ZmqVideoViewer(SinkNode):
             fps = 1.0 / (perf_counter() - self.prev_time)
             self.fps_values.append(fps)
             avg_fps = int(sum(self.fps_values) / len(self.fps_values))
+            image = image.copy()
             height, width, _ = image.shape
             position = (10, height - 10)
             cv2.putText(
