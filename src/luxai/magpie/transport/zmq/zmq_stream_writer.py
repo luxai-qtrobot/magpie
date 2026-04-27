@@ -42,9 +42,11 @@ class ZmqStreamWriter(StreamWriter):
 
         # Apply delivery mode for writer side
         if self.delivery == "latest":
-            # Only sender side option needed for real-time semantics:
-            # Prevent large outbound queue buildup
+            # SNDHWM=1 + CONFLATE: keep only the latest message per subscriber,
+            # replacing stale frames rather than queueing or dropping new ones.
+            # Both must be set before bind/connect.
             self.socket.setsockopt(zmq.SNDHWM, 1)
+            self.socket.setsockopt(zmq.CONFLATE, 1)
 
         # Bind or connect
         if bind:
