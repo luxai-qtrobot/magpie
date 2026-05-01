@@ -89,6 +89,56 @@ The actual bytes on the network:
 
 ---
 
+### Schema Layer
+
+The schema layer sits **above** the transport abstraction and adds structured dispatch on top of raw request/reply.
+
+| Class | Role |
+|---|---|
+| `BaseSchema` | Abstract base — one method: `dispatch(request) → response` |
+| `JsonRpcSchema` | JSON-RPC 2.0 dispatcher + envelope builder. Register methods with `@schema.method()`, `schema.register()`, or load from a custom IDL dict with `from_dict()`. Provides `wrap(method, params)` and `unwrap(response)` for the requester side. |
+| `McpSchema` | Extends `JsonRpcSchema` with built-in MCP handshake handlers (`initialize`, `tools/list`, `tools/call`, `ping`). Every user-registered method is automatically exposed as an MCP tool. |
+
+**Responder side** — pass a schema to any `RpcResponder` at construction time; `handle_once()` dispatches automatically with no handler argument needed:
+
+```python
+server = ZMQRpcResponder("tcp://*:5556", schema=McpSchema(name="my-robot"))
+```
+
+**Requester side** — pass the same schema to any `RpcRequester`; use the proxy interface or `call(method, **params)`:
+
+```python
+client = ZMQRpcRequester("tcp://robot:5556", schema=schema)
+result = client.move_motor(motor="shoulder", angle=1.57)   # proxy style
+result = client.call("move_motor", motor="shoulder", angle=1.57)
+```
+
+---
+
+### MCP Adapter Layer
+
+`adapters/mcp/` provides a FastMCP-compatible transport that tunnels the MCP protocol through MAGPIE's request/reply layer.
+
+| Class | Role |
+|---|---|
+| `McpTransport` | Implements FastMCP's `ClientTransport` ABC. Accepts any MAGPIE `RpcRequester`. Bridges the `anyio` memory streams expected by `mcp.ClientSession` to MAGPIE's synchronous `call()`. |
+
+The bridge runs in a background `anyio` task: it reads `SessionMessage` objects from the write stream (outgoing from the MCP client), calls `requester.call()` in a thread pool, and puts the `SessionMessage` reply on the read stream. MCP notifications (no `id`) are dropped — MAGPIE always expects a reply.
+
+The caller owns the requester lifecycle — `McpTransport` never closes it:
+
+```python
+req = MqttRpcRequester(conn, service_name="robot-01")
+async with Client(McpTransport(req)) as client:
+    tools = await client.list_tools()
+req.close()   # caller closes
+conn.disconnect()
+```
+
+This design means one `McpTransport` class works with ZMQ, MQTT, WebRTC, and any future transport — no per-transport MCP adapter class is needed.
+
+---
+
 ## Extending MAGPIE
 
 ### Adding a New Transport

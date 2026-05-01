@@ -70,6 +70,7 @@ pip install luxai-magpie
 | `pip install "luxai-magpie[video]"` | Image frames + capture/viewer CLI tools (numpy, OpenCV, simplejpeg) |
 | `pip install "luxai-magpie[discovery]"` | `magpie-discovery` CLI tool (zeroconf) |
 | `pip install "luxai-magpie[webrtc]"` | WebRTC transport — P2P streaming, video/audio, RPC over internet (aiortc, numpy) |
+| `pip install "luxai-magpie[mcp]"` | MCP adapter — `McpTransport` for FastMCP `Client` (fastmcp) |
 | `pip install "luxai-magpie[full]"` | All of the above |
 
 > **Note:** `magpie-write`, `magpie-read`, and `magpie-request` work with the base install — no extras needed (ZeroMQ is a core dependency). All CLI entry points are always registered; tools that require a missing extra will print a clear install instruction and exit.
@@ -228,28 +229,67 @@ result = client.call("add", a=3, b=4, _timeout=5.0)
 client.close()
 ```
 
-### Schema-based RPC over MQTT (MCP)
+### MCP Integration
 
-`McpSchema` extends `JsonRpcSchema` with the full MCP handshake (`initialize`, `tools/list`, `tools/call`, `ping`).  Any method you register is automatically exposed as an MCP tool — no FastMCP or separate server process needed on the robot side.
+MAGPIE has native MCP support on both sides of the connection.
 
-The key value proposition: a robot behind NAT connects **outbound** to an MQTT broker; an LLM agent on the cloud connects to the same broker.  No port forwarding, no VPN.
+**Robot side** — `McpSchema` extends `JsonRpcSchema` with the full MCP handshake (`initialize`, `tools/list`, `tools/call`, `ping`). Any registered method is automatically exposed as an MCP tool. No FastMCP or extra process is needed on the robot.
+
+**Agent/cloud side** — `McpTransport` is a `fastmcp.ClientTransport` that wraps any MAGPIE `RpcRequester`. Pass it to FastMCP's `Client` and call tools with the standard async API.
+
+The key value proposition: a robot behind NAT connects **outbound** to a broker; an LLM agent on the cloud connects to the same broker. No port forwarding, no VPN.
+
+```
+pip install "luxai-magpie[mcp]"           # MCP + FastMCP (ZMQ is always available)
+pip install "luxai-magpie[mqtt,mcp]"      # add MQTT transport
+pip install "luxai-magpie[webrtc,mcp]"    # add WebRTC transport
+```
+
+#### Robot side — serve tools over any transport
+
+The server code is identical for all three transports — only the `RpcResponder` and connection setup differ:
+
+**ZMQ (simplest — no broker needed):**
 
 ```python
-from luxai.magpie.transport import MqttConnection, MqttRpcResponder
+from luxai.magpie.transport import ZMQRpcResponder
 from luxai.magpie.schema import McpSchema
 
-schema = McpSchema(name="qtrobot")
+schema = McpSchema(name="my-robot", version="1.0.0")
 
 @schema.method()
 def move_motor(motor: str, angle: float) -> dict:
-    """Move a robot motor to a specific angle."""
-    # ... hardware call ...
-    return {"success": True}
+    """Move a robot motor to a specific angle in radians."""
+    return {"success": True, "motor": motor, "angle": angle}
 
 @schema.method()
 def say(text: str) -> dict:
     """Make the robot speak."""
-    # ... TTS call ...
+    return {"success": True}
+
+server = ZMQRpcResponder("tcp://*:5556", schema=schema)
+while True:
+    try:
+        server.handle_once(timeout=1.0)
+    except TimeoutError:
+        pass
+    except KeyboardInterrupt:
+        server.close()
+        break
+```
+
+**MQTT (robot behind NAT — broker as relay):**
+
+```python
+from luxai.magpie.transport.mqtt import MqttConnection
+from luxai.magpie.transport import MqttRpcResponder
+from luxai.magpie.schema import McpSchema
+
+schema = McpSchema(name="my-robot")
+
+@schema.method()
+def move_motor(motor: str, angle: float) -> dict:
+    """Move a robot motor to a specific angle in radians."""
     return {"success": True}
 
 conn = MqttConnection("mqtt://broker.hivemq.com:1883")
@@ -267,7 +307,122 @@ while True:
         break
 ```
 
-Any MCP-compatible client (Claude Desktop, FastMCP, etc.) that can reach the MQTT broker can now discover and call these tools.
+**WebRTC (P2P after signaling — lowest latency over internet):**
+
+```python
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcResponder
+from luxai.magpie.schema import McpSchema
+
+schema = McpSchema(name="my-robot")
+
+@schema.method()
+def move_motor(motor: str, angle: float) -> dict:
+    """Move a robot motor to a specific angle in radians."""
+    return {"success": True}
+
+conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="robot-01")
+conn.connect()
+
+server = WebRTCRpcResponder(conn, service_name="robot-01", schema=schema)
+while True:
+    try:
+        server.handle_once(timeout=1.0)
+    except TimeoutError:
+        pass
+    except KeyboardInterrupt:
+        server.close()
+        conn.disconnect()
+        break
+```
+
+#### Agent/cloud side — call tools with FastMCP Client
+
+`McpTransport` accepts **any** MAGPIE `RpcRequester` — the caller creates and owns it:
+
+**ZMQ:**
+
+```python
+import asyncio
+from fastmcp import Client
+from fastmcp.exceptions import ToolError
+from luxai.magpie.adapters.mcp import McpTransport
+from luxai.magpie.transport import ZMQRpcRequester
+
+async def main():
+    req = ZMQRpcRequester("tcp://127.0.0.1:5556")
+
+    async with Client(McpTransport(req)) as client:
+        tools = await client.list_tools()
+        for tool in tools:
+            print(f"  {tool.name}: {tool.description}")
+
+        result = await client.call_tool("move_motor", {"motor": "shoulder", "angle": 1.57})
+        print(result.content[0].text)
+
+        try:
+            await client.call_tool("move_motor", {"motor": "bad", "angle": -999})
+        except ToolError as e:
+            print(f"tool error: {e}")
+
+    req.close()
+
+asyncio.run(main())
+```
+
+**MQTT:**
+
+```python
+from luxai.magpie.transport.mqtt import MqttConnection
+from luxai.magpie.transport import MqttRpcRequester
+
+async def main():
+    conn = MqttConnection("mqtt://broker.hivemq.com:1883")
+    conn.connect()
+    req = MqttRpcRequester(conn, service_name="robot-01")
+
+    async with Client(McpTransport(req)) as client:
+        result = await client.call_tool("move_motor", {"motor": "shoulder", "angle": 1.57})
+        print(result.content[0].text)
+
+    req.close()
+    conn.disconnect()
+```
+
+**WebRTC:**
+
+```python
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcRequester
+
+async def main():
+    conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="robot-01")
+    conn.connect()
+    req = WebRTCRpcRequester(conn, service_name="robot-01")
+
+    async with Client(McpTransport(req)) as client:
+        result = await client.call_tool("move_motor", {"motor": "shoulder", "angle": 1.57})
+        print(result.content[0].text)
+
+    req.close()
+    conn.disconnect()
+```
+
+#### Loading tools from an MCP tool-list file
+
+`McpSchema.from_dict` loads tool definitions from the MCP native format — useful when definitions are shared between robot and agent, or loaded from a saved `tools/list` response:
+
+```python
+import json
+from luxai.magpie.schema import McpSchema
+
+# Load from file (MCP native format — array of {name, description, inputSchema})
+with open("tools.json") as f:
+    schema = McpSchema.from_json_file("tools.json")
+
+# Attach implementations
+@schema.handler("move_motor")
+def handle_move_motor(motor: str, angle: float) -> dict:
+    return {"success": True}
+```
 
 ### MQTT Streaming
 
@@ -989,9 +1144,8 @@ MAGPIE powers the internal messaging infrastructure of [QTrobot](https://luxai.c
 
 **Status:** Beta — actively used in production-like systems. APIs are mostly stable; minor changes are still possible.
 
-**Roadmap:**
-- MCP adapter layer — `MqttMcpTransport` / `WebRTCMcpTransport` for FastMCP client integration
-- `adapters/mcp/` module providing FastMCP-compatible transports over MAGPIE's MQTT and WebRTC
+**Roadmap / known issues:**
+- ZMQ MCP client hangs on exit: `ZMQRpcRequester` I/O thread does not terminate cleanly when `req.close()` is called from inside an asyncio event loop; the process must be killed manually. MQTT and WebRTC transports are not affected.
 
 ---
 

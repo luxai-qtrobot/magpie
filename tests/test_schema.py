@@ -414,5 +414,126 @@ class TestMcpSchema(unittest.TestCase):
         self.assertEqual(self.schema.dispatch(self._req("ping", {}))["result"], {})
 
 
+# ---------------------------------------------------
+# McpSchema.from_dict tests
+# ---------------------------------------------------
+
+MCP_TOOLS = [
+    {
+        "name": "add",
+        "description": "Add two numbers",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+            "required": ["a", "b"],
+        },
+    },
+    {
+        "name": "greet",
+        "description": "Say hello",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+    },
+]
+
+
+class TestMcpSchemaFromDict(unittest.TestCase):
+
+    def setUp(self):
+        self.schema = McpSchema.from_dict(MCP_TOOLS, name="testbot", version="0.2.0")
+
+    def _req(self, method, params=None, req_id=1):
+        r = {"jsonrpc": "2.0", "method": method, "id": req_id}
+        if params is not None:
+            r["params"] = params
+        return r
+
+    def test_from_list(self):
+        schema = McpSchema.from_dict(MCP_TOOLS)
+        self.assertIn("add", schema._tools)
+        self.assertIn("greet", schema._tools)
+
+    def test_from_dict_with_tools_key(self):
+        schema = McpSchema.from_dict({"tools": MCP_TOOLS})
+        self.assertIn("add", schema._tools)
+
+    def test_server_metadata(self):
+        resp = self.schema.dispatch(self._req("initialize", {}))
+        info = resp["result"]["serverInfo"]
+        self.assertEqual(info["name"], "testbot")
+        self.assertEqual(info["version"], "0.2.0")
+
+    def test_tools_list_contains_loaded_tools(self):
+        resp = self.schema.dispatch(self._req("tools/list", {}))
+        names = {t["name"] for t in resp["result"]["tools"]}
+        self.assertEqual(names, {"add", "greet"})
+
+    def test_tools_list_preserves_description(self):
+        resp = self.schema.dispatch(self._req("tools/list", {}))
+        tools = {t["name"]: t for t in resp["result"]["tools"]}
+        self.assertEqual(tools["add"]["description"], "Add two numbers")
+
+    def test_tools_list_preserves_input_schema(self):
+        resp = self.schema.dispatch(self._req("tools/list", {}))
+        tools = {t["name"]: t for t in resp["result"]["tools"]}
+        self.assertEqual(tools["add"]["inputSchema"]["properties"]["a"]["type"], "number")
+        self.assertIn("a", tools["add"]["inputSchema"]["required"])
+
+    def test_tools_call_before_handler_is_error(self):
+        resp = self.schema.dispatch(self._req("tools/call", {"name": "add", "arguments": {"a": 1, "b": 2}}))
+        self.assertTrue(resp["result"]["isError"])
+
+    def test_handler_decorator_attaches_implementation(self):
+        @self.schema.handler("add")
+        def _add(a, b):
+            return a + b
+
+        resp = self.schema.dispatch(self._req("tools/call", {"name": "add", "arguments": {"a": 3, "b": 4}}))
+        self.assertFalse(resp["result"]["isError"])
+        self.assertIn("7", resp["result"]["content"][0]["text"])
+
+    def test_from_dict_missing_name_raises(self):
+        with self.assertRaises(ValueError):
+            McpSchema.from_dict([{"description": "no name here", "inputSchema": {}}])
+
+    def test_from_dict_invalid_type_raises(self):
+        with self.assertRaises(ValueError):
+            McpSchema.from_dict("not a list or dict")
+
+    def test_from_json_file(self):
+        import json
+        import tempfile
+        import os
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(MCP_TOOLS, f)
+            path = f.name
+        try:
+            schema = McpSchema.from_json_file(path)
+            self.assertIn("add", schema._tools)
+        finally:
+            os.unlink(path)
+
+    def test_register_with_params_reflected_in_tools_list(self):
+        schema = McpSchema()
+        schema.register("scale", params=[("value", float), ("factor", float)],
+                        description="Scale a value")
+        resp = schema.dispatch({"jsonrpc": "2.0", "method": "tools/list", "id": 1})
+        tools = {t["name"]: t for t in resp["result"]["tools"]}
+        self.assertIn("scale", tools)
+        props = tools["scale"]["inputSchema"]["properties"]
+        self.assertEqual(props["value"]["type"], "number")
+        self.assertEqual(props["factor"]["type"], "number")
+
+    def test_builtins_not_exposed_as_tools(self):
+        names = {t["name"] for t in
+                 self.schema.dispatch(self._req("tools/list", {}))["result"]["tools"]}
+        self.assertNotIn("initialize", names)
+        self.assertNotIn("tools/list", names)
+        self.assertNotIn("ping", names)
+
+
 if __name__ == "__main__":
     unittest.main()
