@@ -57,6 +57,7 @@ class WebRTCRpcRequester(RpcRequester):
         service_name: str,
         name: Optional[str] = None,
         ack_timeout: float = 2.0,
+        schema=None,
     ):
         """
         Args:
@@ -74,7 +75,7 @@ class WebRTCRpcRequester(RpcRequester):
         self._pending: dict[str, _PendingCall] = {}
 
         # Reply callbacks are registered per-rid in _transport_call
-        super().__init__(name=name or "WebRTCRpcRequester")
+        super().__init__(name=name or "WebRTCRpcRequester", schema=schema)
         Logger.debug(
             f"{self.name}: ready for service '{self._service_name}'."
         )

@@ -20,7 +20,8 @@ class ZMQRpcResponder(RpcResponder):
         endpoint: str,
         serializer=None,
         name: str = None,
-        bind: bool = True
+        bind: bool = True,
+        schema=None,
     ):
         """
         Initializes the ZMQRpcResponder.
@@ -50,7 +51,7 @@ class ZMQRpcResponder(RpcResponder):
             self.socket.connect(endpoint)
             action = "connected"
 
-        super().__init__(name=name if name is not None else "ZMQRpcResponder")
+        super().__init__(name=name if name is not None else "ZMQRpcResponder", schema=schema)
         Logger.debug(f"{self.name} {action} ROUTER at {self.endpoint}.")
 
     def _transport_recv(self, timeout: float = None) -> tuple:

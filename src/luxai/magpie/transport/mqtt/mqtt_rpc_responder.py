@@ -54,6 +54,7 @@ class MqttRpcResponder(RpcResponder):
         serializer=None,
         name: Optional[str] = None,
         qos: Optional[int] = None,
+        schema=None,
     ):
         """
         Args:
@@ -77,7 +78,7 @@ class MqttRpcResponder(RpcResponder):
 
         self._connection.add_subscription(self._req_topic, self._on_request, qos=self._qos)
 
-        super().__init__(name=name or "MqttRpcResponder")
+        super().__init__(name=name or "MqttRpcResponder", schema=schema)
         Logger.debug(f"{self.name}: listening on '{self._req_topic}'")
 
     # ------------------------------------------------------------------

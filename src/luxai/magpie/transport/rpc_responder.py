@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable
+from typing import Callable, Optional
 from luxai.magpie.utils.logger import Logger
 
 
@@ -13,15 +13,18 @@ class RpcResponder(ABC):
     Subclasses implement the underlying transport logic (e.g., ZeroMQ ROUTER).
     """
 
-    def __init__(self, name: str = None):
+    def __init__(self, name: str = None, schema=None):
         """
         Initializes the RpcResponder.
 
         Args:
             name (str, optional): The name for this responder. Defaults to class name.
+            schema (BaseSchema, optional): Schema for automatic request dispatch.
+                When set, handler is not required in handle_once().
         """
-        self.name = name if name is not None else self.__class__.__name__    
-        self._closed = False    
+        self.name = name if name is not None else self.__class__.__name__
+        self._closed = False
+        self._schema = schema
 
     @abstractmethod
     def _transport_recv(self, timeout: float = None) -> tuple:
@@ -69,36 +72,45 @@ class RpcResponder(ABC):
         pass
 
     
-    def handle_once(self, handler: RpcHandlerType, timeout: float = None) -> bool:
+    def handle_once(self, handler: Optional[RpcHandlerType] = None, timeout: float = None) -> bool:
         """
-        Handles a single incoming request using the given handler.
+        Handles a single incoming request.
+
+        When a schema is set on this responder, handler is optional — the schema
+        dispatches the request automatically. When no schema is set, handler is
+        required.
 
         Args:
-            handler (callable): Function with signature handler(request_obj) -> response_obj.
+            handler (callable, optional): Function with signature handler(request_obj) -> response_obj.
+                Not needed when schema= was passed to the constructor.
             timeout (float, optional): Timeout in seconds for waiting for a request.
 
         Returns:
-            bool: True if a request was handled, False otherwise (e.g., timeout).
+            bool: True if a request was handled, False on timeout.
 
         Raises:
             RuntimeError: If the responder is already closed.
-            TimeoutError: If no request arrives in time.
+            ValueError: If neither handler nor schema is available.
             Exception: For transport-level or handler errors.
         """
         if self._closed:
             raise RuntimeError(f"{self.name} is closed")
-        
+        if handler is None and self._schema is None:
+            raise ValueError(f"{self.name}: handler is required when no schema is set")
+
         try:
             request_obj, client_ctx = self._transport_recv(timeout=timeout)
         except TimeoutError:
-            # no request within timeout
             return False
 
-        # Let the user-defined handler process the request
-        response_obj = handler(request_obj)
+        if self._schema is not None:
+            response_obj = self._schema.dispatch(request_obj)
+            if response_obj is not None:
+                self._transport_send(response_obj, client_ctx)
+        else:
+            response_obj = handler(request_obj)
+            self._transport_send(response_obj, client_ctx)
 
-        # Send the response
-        self._transport_send(response_obj, client_ctx)
         return True
 
     def close(self) -> None:

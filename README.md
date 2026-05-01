@@ -32,6 +32,7 @@ Originally developed at **[LuxAI](https://luxai.com)** for the [QTrobot](https:/
 
 - **Topic-based streaming** — high-throughput topic-based messaging via `StreamWriter` / `StreamReader`
 - **Request/Response RPC** — synchronous and async-friendly RPC via `ZMQRpcRequester` / `ZMQRpcResponder`
+- **Schema-based RPC** — JSON-RPC 2.0 dispatch via `JsonRpcSchema`; `McpSchema` makes any responder natively reachable by MCP clients (Claude, FastMCP, etc.) over any MAGPIE transport
 - **MQTT transport** — full streaming and RPC over MQTT with a shared connection; supports `mqtt://`, `mqtts://`, `ws://`, `wss://`, TLS, auth, LWT, and auto-reconnect
 - **WebRTC transport** — P2P streaming, video/audio, and RPC over WebRTC; MQTT or ZMQ used for the initial signaling handshake, all payload traffic flows directly peer-to-peer; STUN + optional TURN for NAT traversal
 - **Pluggable transports** — ZeroMQ, MQTT, and WebRTC today; add any custom transport without changing user code
@@ -157,6 +158,116 @@ while True:
         server.close()
         break
 ```
+
+### Schema-based RPC
+
+`JsonRpcSchema` adds JSON-RPC 2.0 dispatch on top of any MAGPIE transport.  Define your API once, then attach handlers and call methods by name — no manual envelope building required.
+
+**Responder — define the API and attach handlers:**
+
+```python
+from luxai.magpie.transport import ZMQRpcResponder
+from luxai.magpie.schema import JsonRpcSchema
+
+# Define the API in one place (custom IDL format)
+ROBOT_API = {
+    "add": {"description": "Add two numbers",
+            "params": {"a": {"type": "number", "required": True},
+                       "b": {"type": "number", "required": True}},
+            "returns": {"type": "number"}},
+    "sub": {"description": "Subtract b from a",
+            "params": {"a": {"type": "number", "required": True},
+                       "b": {"type": "number", "required": True}}},
+}
+
+schema = JsonRpcSchema.from_dict(ROBOT_API)
+
+@schema.handler("add")
+def handle_add(a, b):
+    return a + b
+
+@schema.handler("sub")
+def handle_sub(a, b):
+    return a - b
+
+# Inline definition — shape and handler in one step
+@schema.method()
+def mul(a: float, b: float) -> float:
+    """Multiply two numbers."""
+    return a * b
+
+server = ZMQRpcResponder("tcp://*:5556", schema=schema)
+while True:
+    try:
+        server.handle_once(timeout=1.0)   # no handler arg needed
+    except TimeoutError:
+        pass
+    except KeyboardInterrupt:
+        server.close()
+        break
+```
+
+**Requester — three equivalent call styles:**
+
+```python
+from luxai.magpie.transport import ZMQRpcRequester
+from luxai.magpie.schema import JsonRpcSchema
+
+schema = JsonRpcSchema.from_dict(ROBOT_API)
+client = ZMQRpcRequester("tcp://127.0.0.1:5556", schema=schema)
+
+# Proxy style — method name as attribute
+result = client.add(a=3, b=4)          # → 7
+
+# Base call style — method name as first arg
+result = client.call("add", a=3, b=4)  # → 7
+
+# With explicit transport timeout (_timeout avoids colliding with param names)
+result = client.call("add", a=3, b=4, _timeout=5.0)
+
+client.close()
+```
+
+### Schema-based RPC over MQTT (MCP)
+
+`McpSchema` extends `JsonRpcSchema` with the full MCP handshake (`initialize`, `tools/list`, `tools/call`, `ping`).  Any method you register is automatically exposed as an MCP tool — no FastMCP or separate server process needed on the robot side.
+
+The key value proposition: a robot behind NAT connects **outbound** to an MQTT broker; an LLM agent on the cloud connects to the same broker.  No port forwarding, no VPN.
+
+```python
+from luxai.magpie.transport import MqttConnection, MqttRpcResponder
+from luxai.magpie.schema import McpSchema
+
+schema = McpSchema(name="qtrobot")
+
+@schema.method()
+def move_motor(motor: str, angle: float) -> dict:
+    """Move a robot motor to a specific angle."""
+    # ... hardware call ...
+    return {"success": True}
+
+@schema.method()
+def say(text: str) -> dict:
+    """Make the robot speak."""
+    # ... TTS call ...
+    return {"success": True}
+
+conn = MqttConnection("mqtt://broker.hivemq.com:1883")
+conn.connect()
+
+server = MqttRpcResponder(conn, service_name="robot-01", schema=schema)
+while True:
+    try:
+        server.handle_once(timeout=1.0)
+    except TimeoutError:
+        pass
+    except KeyboardInterrupt:
+        server.close()
+        conn.disconnect()
+        break
+```
+
+Any MCP-compatible client (Claude Desktop, FastMCP, etc.) that can reach the MQTT broker can now discover and call these tools.
 
 ### MQTT Streaming
 
@@ -879,8 +990,8 @@ MAGPIE powers the internal messaging infrastructure of [QTrobot](https://luxai.c
 **Status:** Beta — actively used in production-like systems. APIs are mostly stable; minor changes are still possible.
 
 **Roadmap:**
-- Multi-transport support (route the same stream over ZMQ and MQTT simultaneously)
-- Higher-level pipeline abstractions for AI workloads
+- MCP adapter layer — `MqttMcpTransport` / `WebRTCMcpTransport` for FastMCP client integration
+- `adapters/mcp/` module providing FastMCP-compatible transports over MAGPIE's MQTT and WebRTC
 
 ---
 

@@ -31,7 +31,8 @@ class ZMQRpcRequester(RpcRequester):
         serializer=None,
         name: str = None,
         identity: bytes = None,
-        ack_timeout: float = 2.0
+        ack_timeout: float = 2.0,
+        schema=None,
     ):
         """
         Initializes the ZMQRpcRequester.
@@ -71,7 +72,7 @@ class ZMQRpcRequester(RpcRequester):
         self.name = name if name is not None else "ZMQRpcRequester"
         self._start_io_thread()
 
-        super().__init__(name=self.name)
+        super().__init__(name=self.name, schema=schema)
         Logger.debug(f"{self.name} connected to {self.endpoint} as DEALER.")
 
     # --------------------------------------------------
