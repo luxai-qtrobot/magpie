@@ -297,9 +297,12 @@ class ZMQRpcRequester(RpcRequester):
         except Exception as e:
             Logger.warning(f"{self.name}: ctrl push close error: {e}")
 
-        # Terminate context if we created it
+        # Terminate context if we created it.
+        # Use destroy(linger=0) instead of term() so that sockets created in
+        # thread-pool threads (e.g. by anyio.to_thread.run_sync) are forcibly
+        # closed and don't block context termination.
         try:
             if not self.endpoint.startswith("inproc:"):
-                self.context.term()
+                self.context.destroy(linger=0)
         except Exception as e:
             Logger.warning(f"{self.name}: context close error: {e}")
