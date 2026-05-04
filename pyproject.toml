@@ -68,6 +68,10 @@ webrtc = [
     "numpy",
 ]
 
+mcp = [
+    "fastmcp>=2.0",
+]
+
 dev = [
     "numpy",
     "opencv-python",
@@ -77,6 +81,7 @@ dev = [
     "zeroconf",
     "paho-mqtt>=1.6.0",
     "aiortc>=1.6.0",
+    "fastmcp>=2.0",
     "pytest",
     "coverage",
 ]

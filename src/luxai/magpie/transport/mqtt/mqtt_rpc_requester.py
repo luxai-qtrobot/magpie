@@ -60,6 +60,7 @@ class MqttRpcRequester(RpcRequester):
         name: Optional[str] = None,
         ack_timeout: float = 2.0,
         qos: Optional[int] = None,
+        schema=None,
     ):
         """
         Args:
@@ -94,7 +95,7 @@ class MqttRpcRequester(RpcRequester):
         # Subscribe to our private reply topic
         self._connection.add_subscription(self._rep_topic, self._on_reply, qos=self._qos)
 
-        super().__init__(name=name or "MqttRpcRequester")
+        super().__init__(name=name or "MqttRpcRequester", schema=schema)
         Logger.debug(
             f"{self.name}: request topic='{self._req_topic}', "
             f"reply topic='{self._rep_topic}'"

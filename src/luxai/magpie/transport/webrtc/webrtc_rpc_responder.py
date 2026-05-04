@@ -49,6 +49,7 @@ class WebRTCRpcResponder(RpcResponder):
         connection: WebRTCConnection,
         service_name: str,
         name: Optional[str] = None,
+        schema=None,
     ):
         """
         Args:
@@ -65,7 +66,7 @@ class WebRTCRpcResponder(RpcResponder):
 
         self._connection.add_rpc_service(self._service_name, self._req_queue)
 
-        super().__init__(name=name or "WebRTCRpcResponder")
+        super().__init__(name=name or "WebRTCRpcResponder", schema=schema)
         Logger.debug(f"{self.name}: listening on service '{self._service_name}'.")
 
     # ------------------------------------------------------------------

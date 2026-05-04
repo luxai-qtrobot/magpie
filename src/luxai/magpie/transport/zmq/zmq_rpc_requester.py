@@ -31,7 +31,8 @@ class ZMQRpcRequester(RpcRequester):
         serializer=None,
         name: str = None,
         identity: bytes = None,
-        ack_timeout: float = 2.0
+        ack_timeout: float = 2.0,
+        schema=None,
     ):
         """
         Initializes the ZMQRpcRequester.
@@ -71,7 +72,7 @@ class ZMQRpcRequester(RpcRequester):
         self.name = name if name is not None else "ZMQRpcRequester"
         self._start_io_thread()
 
-        super().__init__(name=self.name)
+        super().__init__(name=self.name, schema=schema)
         Logger.debug(f"{self.name} connected to {self.endpoint} as DEALER.")
 
     # --------------------------------------------------
@@ -296,9 +297,12 @@ class ZMQRpcRequester(RpcRequester):
         except Exception as e:
             Logger.warning(f"{self.name}: ctrl push close error: {e}")
 
-        # Terminate context if we created it
+        # Terminate context if we created it.
+        # Use destroy(linger=0) instead of term() so that sockets created in
+        # thread-pool threads (e.g. by anyio.to_thread.run_sync) are forcibly
+        # closed and don't block context termination.
         try:
             if not self.endpoint.startswith("inproc:"):
-                self.context.term()
+                self.context.destroy(linger=0)
         except Exception as e:
             Logger.warning(f"{self.name}: context close error: {e}")
