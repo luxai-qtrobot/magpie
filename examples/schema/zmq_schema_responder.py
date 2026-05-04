@@ -3,7 +3,7 @@ ZMQ RPC responder with JsonRpcSchema.
 
 Demonstrates two ways to define and attach handlers:
 
-  Way A + D — load API from dict, attach handlers separately
+  Way A + D — load API from JSON, attach handlers separately
   Way C     — decorator defines shape + handler together
 
 Run this first, then run zmq_schema_requester.py.
@@ -13,25 +13,32 @@ from luxai.magpie.schema import JsonRpcSchema
 from luxai.magpie.utils import Logger
 
 
-# ── Way A: define API from dict (no handlers yet) ───────────────────
-MATH_API = {
-    "add": {
-        "description": "Add two numbers",
-        "params": {
-            "a": {"type": "number", "required": True},
-            "b": {"type": "number", "required": True},
-        },
-    },
-    "sub": {
-        "description": "Subtract b from a",
-        "params": {
-            "a": {"type": "number", "required": True},
-            "b": {"type": "number", "required": True},
-        },
-    },
-}
+# ── Way A: load API from JSON string (no handlers yet) ──────────────
 
-schema = JsonRpcSchema.from_dict(MATH_API)
+MATH_API = """
+[
+  {
+    "name": "add",
+    "description": "Add two numbers",
+    "inputSchema": {
+      "type": "object",
+      "properties": { "a": {"type": "number"}, "b": {"type": "number"} },
+      "required": ["a", "b"]
+    }
+  },
+  {
+    "name": "sub",
+    "description": "Subtract b from a",
+    "inputSchema": {
+      "type": "object",
+      "properties": { "a": {"type": "number"}, "b": {"type": "number"} },
+      "required": ["a", "b"]
+    }
+  }
+]
+"""
+
+schema = JsonRpcSchema.from_json_string(MATH_API)
 
 
 # ── Way D: attach handlers to pre-defined methods ───────────────────

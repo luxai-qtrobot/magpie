@@ -6,7 +6,7 @@ from luxai.magpie.utils import Logger
 
 if __name__ == '__main__':
     Logger.set_level("DEBUG")
-    subscriber = ZmqStreamReader("tcp://127.0.0.1:5555", topic=['/mytopic'], bind=False)
+    reader = ZmqStreamReader("tcp://127.0.0.1:5555", topic=['/mytopic'], bind=False)
 
     while True: 
         try:

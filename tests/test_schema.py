@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 
@@ -6,23 +7,29 @@ from luxai.magpie.schema import JsonRpcSchema, JsonRpcError, McpSchema
 from tests.fake_rpc_transports import FakeRpcRequester, FakeRpcResponder
 
 
-ROBOT_API = {
-    "face_look": {
-        "description": "Move robot eyes to pixel offset from center",
-        "params": {
-            "l_eye":    {"type": "array",  "items": "integer", "required": True},
-            "r_eye":    {"type": "array",  "items": "integer", "required": True},
-            "duration": {"type": "number", "default": 0},
+MCP_TOOLS = [
+    {
+        "name": "add",
+        "description": "Add two numbers",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+            "required": ["a", "b"],
         },
-        "returns": {"type": "boolean"},
+        "outputSchema": {"type": "number"},
     },
-    "face_show_emotion": {
-        "description": "Show a facial emotion",
-        "params": {
-            "emotion": {"type": "string", "required": True},
+    {
+        "name": "greet",
+        "description": "Say hello",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
         },
     },
-}
+]
+
+MCP_TOOLS_JSON = json.dumps(MCP_TOOLS)
 
 
 # ---------------------------------------------------
@@ -131,53 +138,77 @@ class TestJsonRpcSchemaDispatch(unittest.TestCase):
 
 class TestJsonRpcSchemaRegistration(unittest.TestCase):
 
-    # --- Way A: from_dict (custom IDL) ---
+    # --- register() with explicit input_schema ---
 
-    def test_from_dict_defines_methods(self):
-        schema = JsonRpcSchema.from_dict(ROBOT_API)
+    def test_register_with_input_schema(self):
+        schema = JsonRpcSchema()
+        schema.register(
+            name="face_look",
+            description="Move robot eyes",
+            input_schema={
+                "type": "object",
+                "properties": {"l_eye": {"type": "array"}, "r_eye": {"type": "array"}},
+                "required": ["l_eye", "r_eye"],
+            },
+        )
         self.assertIn("face_look", schema._methods)
-        self.assertIn("face_show_emotion", schema._methods)
+        entry = schema._methods["face_look"]
+        self.assertEqual(entry["description"], "Move robot eyes")
+        self.assertIn("l_eye", entry["input_schema"]["required"])
 
-    def test_from_dict_no_handler_returns_not_implemented(self):
-        schema = JsonRpcSchema.from_dict(ROBOT_API)
-        resp = schema.dispatch({"jsonrpc": "2.0", "method": "face_look",
-                                "params": {"l_eye": [0, 0], "r_eye": [0, 0]}, "id": 1})
+    def test_register_stub_no_func(self):
+        schema = JsonRpcSchema()
+        schema.register(
+            name="move",
+            input_schema={"type": "object", "properties": {"x": {"type": "number"}}, "required": ["x"]},
+        )
+        resp = schema.dispatch({"jsonrpc": "2.0", "method": "move", "params": {"x": 1.0}, "id": 1})
         self.assertEqual(resp["error"]["code"], -32601)
         self.assertIn("not implemented", resp["error"]["message"])
 
-    def test_from_dict_input_schema(self):
-        schema = JsonRpcSchema.from_dict(ROBOT_API)
-        entry = schema._methods["face_look"]
-        props = entry["input_schema"]["properties"]
-        self.assertEqual(props["l_eye"]["type"], "array")
-        self.assertEqual(props["l_eye"]["items"], {"type": "integer"})
-        self.assertIn("l_eye", entry["input_schema"]["required"])
-        self.assertNotIn("duration", entry["input_schema"].get("required", []))
+    def test_register_with_output_schema(self):
+        schema = JsonRpcSchema()
+        schema.register(
+            name="add",
+            input_schema={"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}, "required": ["a", "b"]},
+            output_schema={"type": "number"},
+        )
+        self.assertEqual(schema._methods["add"]["output_schema"], {"type": "number"})
 
-    def test_from_dict_description(self):
-        schema = JsonRpcSchema.from_dict(ROBOT_API)
-        self.assertIn("eyes", schema._methods["face_look"]["description"])
+    def test_decorator_infers_output_schema(self):
+        schema = JsonRpcSchema()
 
-    # --- Way A: from_json_string / from_json_file ---
+        @schema.method()
+        def add(a: float, b: float) -> float:
+            return a + b
 
-    def test_from_json_string(self):
-        schema = JsonRpcSchema.from_json_string(json.dumps(ROBOT_API))
-        self.assertIn("face_look", schema._methods)
+        self.assertEqual(schema._methods["add"]["output_schema"], {"type": "number"})
 
-    def test_from_json_file(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump(ROBOT_API, f)
-            path = f.name
-        schema = JsonRpcSchema.from_json_file(path)
-        self.assertIn("face_look", schema._methods)
+    def test_decorator_no_return_annotation(self):
+        schema = JsonRpcSchema()
+
+        @schema.method()
+        def log(msg: str):
+            pass
+
+        self.assertIsNone(schema._methods["log"]["output_schema"])
 
     # --- handler() decorator ---
 
     def test_handler_attaches_implementation(self):
-        schema = JsonRpcSchema.from_dict(ROBOT_API)
+        schema = JsonRpcSchema()
+        schema.register(
+            name="face_look",
+            description="Move robot eyes",
+            input_schema={
+                "type": "object",
+                "properties": {"l_eye": {"type": "array"}, "r_eye": {"type": "array"}},
+                "required": ["l_eye", "r_eye"],
+            },
+        )
 
         @schema.handler("face_look")
-        def handle_face_look(l_eye, r_eye, duration=0):
+        def handle_face_look(l_eye, r_eye):
             return {"ok": True, "l_eye": l_eye}
 
         resp = schema.dispatch({"jsonrpc": "2.0", "method": "face_look",
@@ -191,36 +222,18 @@ class TestJsonRpcSchemaRegistration(unittest.TestCase):
             @schema.handler("nonexistent")
             def fn(): ...
 
-    def test_handler_updates_description(self):
-        schema = JsonRpcSchema.from_dict(ROBOT_API)
-
-        @schema.handler("face_look")
-        def handle_face_look(l_eye, r_eye, duration=0):
-            """Handles face look."""
-            return True
-
-        # original description preserved since from_dict already set it
-        self.assertIn("eyes", schema._methods["face_look"]["description"])
-
-    # --- Way B: register with params list ---
-
-    def test_register_params_list(self):
+    def test_handler_sets_description_if_empty(self):
         schema = JsonRpcSchema()
-        schema.register("face_look", params=[("l_eye", list), ("r_eye", list), ("duration", float)])
-        entry = schema._methods["face_look"]
-        self.assertEqual(entry["input_schema"]["properties"]["l_eye"], {"type": "array"})
-        self.assertIn("l_eye", entry["input_schema"]["required"])
-        self.assertIn("r_eye", entry["input_schema"]["required"])
-        self.assertIn("duration", entry["input_schema"]["required"])
+        schema.register(name="move", input_schema={"type": "object"})
 
-    def test_register_no_func_no_handler_returns_not_implemented(self):
-        schema = JsonRpcSchema()
-        schema.register("face_look", params=[("l_eye", list), ("r_eye", list)])
-        resp = schema.dispatch({"jsonrpc": "2.0", "method": "face_look",
-                                "params": {"l_eye": [0, 0], "r_eye": [0, 0]}, "id": 1})
-        self.assertEqual(resp["error"]["code"], -32601)
+        @schema.handler("move")
+        def handle_move():
+            """Move the robot."""
+            pass
 
-    # --- Way C: decorator ---
+        self.assertEqual(schema._methods["move"]["description"], "Move the robot.")
+
+    # --- decorator ---
 
     def test_decorator_registers_and_dispatches(self):
         schema = JsonRpcSchema()
@@ -241,7 +254,6 @@ class TestJsonRpcSchemaRegistration(unittest.TestCase):
         def face_look(l_eye: list, r_eye: list, duration: float = 0.0): ...
 
         self.assertIn("face_look", schema._methods)
-        self.assertIsNotNone(schema._methods["face_look"]["func"])
         props = schema._methods["face_look"]["input_schema"]["properties"]
         self.assertEqual(props["l_eye"]["type"], "array")
 
@@ -274,10 +286,23 @@ class TestJsonRpcSchemaRegistration(unittest.TestCase):
 class TestRpcRequesterProxy(unittest.TestCase):
 
     def _make_requester(self, response):
-        """FakeRpcRequester with schema, pre-loaded with a canned response."""
         schema = JsonRpcSchema()
-        schema.register("face_look", params=[("l_eye", list), ("r_eye", list)])
-        schema.register("add", params=[("a", int), ("b", int)])
+        schema.register(
+            name="face_look",
+            input_schema={
+                "type": "object",
+                "properties": {"l_eye": {"type": "array"}, "r_eye": {"type": "array"}},
+                "required": ["l_eye", "r_eye"],
+            },
+        )
+        schema.register(
+            name="add",
+            input_schema={
+                "type": "object",
+                "properties": {"a": {"type": "integer"}, "b": {"type": "integer"}},
+                "required": ["a", "b"],
+            },
+        )
         req = FakeRpcRequester(response=response)
         req._schema = schema
         return req
@@ -300,7 +325,7 @@ class TestRpcRequesterProxy(unittest.TestCase):
     def test_proxy_timeout(self):
         client = self._make_requester(self._json_rpc_response(7))
         client.add(a=3, b=4, _timeout=5.0)
-        self.assertEqual(client.calls[0][1], 5.0)  # timeout passed to transport
+        self.assertEqual(client.calls[0][1], 5.0)
 
     def test_timeout_not_in_params(self):
         client = self._make_requester(self._json_rpc_response(7))
@@ -389,6 +414,11 @@ class TestMcpSchema(unittest.TestCase):
         tools = {t["name"]: t for t in resp["result"]["tools"]}
         self.assertEqual(tools["move_motor"]["inputSchema"]["properties"]["motor"]["type"], "string")
 
+    def test_decorator_output_schema_in_tools_list(self):
+        resp = self.schema.dispatch(self._req("tools/list", {}))
+        tools = {t["name"]: t for t in resp["result"]["tools"]}
+        self.assertEqual(tools["move_motor"]["outputSchema"], {"type": "object"})
+
     def test_tools_call_success(self):
         resp = self.schema.dispatch(self._req("tools/call", {
             "name": "move_motor", "arguments": {"motor": "shoulder", "angle": 1.57},
@@ -413,37 +443,47 @@ class TestMcpSchema(unittest.TestCase):
     def test_ping(self):
         self.assertEqual(self.schema.dispatch(self._req("ping", {}))["result"], {})
 
+    def test_register_object_output_schema_in_tools_list(self):
+        schema = McpSchema()
+        schema.register(
+            name="status",
+            description="Get status",
+            input_schema={"type": "object"},
+            output_schema={"type": "object", "properties": {"ok": {"type": "boolean"}}},
+        )
+        resp = schema.dispatch({"jsonrpc": "2.0", "method": "tools/list", "id": 1})
+        tools = {t["name"]: t for t in resp["result"]["tools"]}
+        self.assertIn("status", tools)
+        self.assertEqual(tools["status"]["outputSchema"]["type"], "object")
+
+    def test_register_scalar_output_schema_not_in_tools_list(self):
+        # MCP structuredContent must be a dict — scalar outputSchema must not be exposed
+        schema = McpSchema()
+        schema.register(
+            name="scale",
+            description="Scale a value",
+            input_schema={"type": "object", "properties": {"value": {"type": "number"}}},
+            output_schema={"type": "number"},
+        )
+        resp = schema.dispatch({"jsonrpc": "2.0", "method": "tools/list", "id": 1})
+        tools = {t["name"]: t for t in resp["result"]["tools"]}
+        self.assertIn("scale", tools)
+        self.assertNotIn("outputSchema", tools["scale"])
+
+    def test_no_output_schema_omitted_from_tools_list(self):
+        schema = McpSchema()
+        schema.register(name="log", description="Log a message",
+                        input_schema={"type": "object", "properties": {"msg": {"type": "string"}}})
+        resp = schema.dispatch({"jsonrpc": "2.0", "method": "tools/list", "id": 1})
+        tools = {t["name"]: t for t in resp["result"]["tools"]}
+        self.assertNotIn("outputSchema", tools["log"])
+
 
 # ---------------------------------------------------
-# McpSchema.from_dict tests
+# McpSchema loading tests
 # ---------------------------------------------------
 
-MCP_TOOLS = [
-    {
-        "name": "add",
-        "description": "Add two numbers",
-        "inputSchema": {
-            "type": "object",
-            "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
-            "required": ["a", "b"],
-        },
-    },
-    {
-        "name": "greet",
-        "description": "Say hello",
-        "inputSchema": {
-            "type": "object",
-            "properties": {"name": {"type": "string"}},
-            "required": ["name"],
-        },
-    },
-]
-
-
-class TestMcpSchemaFromDict(unittest.TestCase):
-
-    def setUp(self):
-        self.schema = McpSchema.from_dict(MCP_TOOLS, name="testbot", version="0.2.0")
+class TestMcpSchemaLoading(unittest.TestCase):
 
     def _req(self, method, params=None, req_id=1):
         r = {"jsonrpc": "2.0", "method": method, "id": req_id}
@@ -451,88 +491,226 @@ class TestMcpSchemaFromDict(unittest.TestCase):
             r["params"] = params
         return r
 
-    def test_from_list(self):
-        schema = McpSchema.from_dict(MCP_TOOLS)
+    # --- from_json_string ---
+
+    def test_from_json_string_list(self):
+        schema = McpSchema.from_json_string(MCP_TOOLS_JSON)
         self.assertIn("add", schema._tools)
         self.assertIn("greet", schema._tools)
 
-    def test_from_dict_with_tools_key(self):
-        schema = McpSchema.from_dict({"tools": MCP_TOOLS})
+    def test_from_json_string_with_tools_key(self):
+        schema = McpSchema.from_json_string(json.dumps({"tools": MCP_TOOLS}))
         self.assertIn("add", schema._tools)
 
-    def test_server_metadata(self):
-        resp = self.schema.dispatch(self._req("initialize", {}))
+    def test_from_json_string_server_metadata(self):
+        schema = McpSchema.from_json_string(MCP_TOOLS_JSON, name="testbot", version="0.2.0")
+        resp = schema.dispatch(self._req("initialize", {}))
         info = resp["result"]["serverInfo"]
         self.assertEqual(info["name"], "testbot")
         self.assertEqual(info["version"], "0.2.0")
 
-    def test_tools_list_contains_loaded_tools(self):
-        resp = self.schema.dispatch(self._req("tools/list", {}))
+    def test_from_json_string_tools_list(self):
+        schema = McpSchema.from_json_string(MCP_TOOLS_JSON)
+        resp = schema.dispatch(self._req("tools/list", {}))
         names = {t["name"] for t in resp["result"]["tools"]}
         self.assertEqual(names, {"add", "greet"})
 
-    def test_tools_list_preserves_description(self):
-        resp = self.schema.dispatch(self._req("tools/list", {}))
+    def test_from_json_string_preserves_description(self):
+        schema = McpSchema.from_json_string(MCP_TOOLS_JSON)
+        resp = schema.dispatch(self._req("tools/list", {}))
         tools = {t["name"]: t for t in resp["result"]["tools"]}
         self.assertEqual(tools["add"]["description"], "Add two numbers")
 
-    def test_tools_list_preserves_input_schema(self):
-        resp = self.schema.dispatch(self._req("tools/list", {}))
+    def test_from_json_string_preserves_input_schema(self):
+        schema = McpSchema.from_json_string(MCP_TOOLS_JSON)
+        resp = schema.dispatch(self._req("tools/list", {}))
         tools = {t["name"]: t for t in resp["result"]["tools"]}
         self.assertEqual(tools["add"]["inputSchema"]["properties"]["a"]["type"], "number")
         self.assertIn("a", tools["add"]["inputSchema"]["required"])
 
-    def test_tools_call_before_handler_is_error(self):
-        resp = self.schema.dispatch(self._req("tools/call", {"name": "add", "arguments": {"a": 1, "b": 2}}))
-        self.assertTrue(resp["result"]["isError"])
+    def test_from_json_string_scalar_output_schema_not_exposed(self):
+        # add has outputSchema: {"type": "number"} which is scalar — must not appear in tools/list
+        schema = McpSchema.from_json_string(MCP_TOOLS_JSON)
+        resp = schema.dispatch(self._req("tools/list", {}))
+        tools = {t["name"]: t for t in resp["result"]["tools"]}
+        self.assertNotIn("outputSchema", tools["add"])
+        self.assertNotIn("outputSchema", tools["greet"])
 
-    def test_handler_decorator_attaches_implementation(self):
-        @self.schema.handler("add")
-        def _add(a, b):
-            return a + b
+    def test_from_json_string_object_output_schema_exposed(self):
+        tools_with_object_schema = [
+            {
+                "name": "get_info",
+                "description": "Get info",
+                "inputSchema": {"type": "object"},
+                "outputSchema": {"type": "object", "properties": {"status": {"type": "string"}}},
+            }
+        ]
+        schema = McpSchema.from_json_string(json.dumps(tools_with_object_schema))
+        resp = schema.dispatch(self._req("tools/list", {}))
+        tools = {t["name"]: t for t in resp["result"]["tools"]}
+        self.assertEqual(tools["get_info"]["outputSchema"]["type"], "object")
 
-        resp = self.schema.dispatch(self._req("tools/call", {"name": "add", "arguments": {"a": 3, "b": 4}}))
-        self.assertFalse(resp["result"]["isError"])
-        self.assertIn("7", resp["result"]["content"][0]["text"])
-
-    def test_from_dict_missing_name_raises(self):
+    def test_from_json_string_missing_name_raises(self):
         with self.assertRaises(ValueError):
-            McpSchema.from_dict([{"description": "no name here", "inputSchema": {}}])
+            McpSchema.from_json_string('[{"description": "no name", "inputSchema": {}}]')
 
-    def test_from_dict_invalid_type_raises(self):
+    def test_from_json_string_invalid_type_raises(self):
         with self.assertRaises(ValueError):
-            McpSchema.from_dict("not a list or dict")
+            McpSchema.from_json_string('"not a list or dict"')
+
+    # --- from_json_file ---
 
     def test_from_json_file(self):
-        import json
-        import tempfile
-        import os
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(MCP_TOOLS, f)
             path = f.name
         try:
             schema = McpSchema.from_json_file(path)
             self.assertIn("add", schema._tools)
+            self.assertIn("greet", schema._tools)
         finally:
             os.unlink(path)
 
-    def test_register_with_params_reflected_in_tools_list(self):
-        schema = McpSchema()
-        schema.register("scale", params=[("value", float), ("factor", float)],
-                        description="Scale a value")
-        resp = schema.dispatch({"jsonrpc": "2.0", "method": "tools/list", "id": 1})
-        tools = {t["name"]: t for t in resp["result"]["tools"]}
-        self.assertIn("scale", tools)
-        props = tools["scale"]["inputSchema"]["properties"]
-        self.assertEqual(props["value"]["type"], "number")
-        self.assertEqual(props["factor"]["type"], "number")
+    def test_from_json_file_scalar_output_schema_not_in_tools(self):
+        # Scalar outputSchema from JSON must not be stored in _tools (structuredContent constraint)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(MCP_TOOLS, f)
+            path = f.name
+        try:
+            schema = McpSchema.from_json_file(path)
+            self.assertNotIn("output_schema", schema._tools["add"])
+        finally:
+            os.unlink(path)
+
+    # --- handler() after loading ---
+
+    def test_handler_attaches_implementation(self):
+        schema = McpSchema.from_json_string(MCP_TOOLS_JSON)
+
+        @schema.handler("add")
+        def _add(a, b):
+            return a + b
+
+        resp = schema.dispatch(self._req("tools/call", {"name": "add", "arguments": {"a": 3, "b": 4}}))
+        self.assertFalse(resp["result"]["isError"])
+        self.assertIn("7", resp["result"]["content"][0]["text"])
+
+    def test_tools_call_before_handler_is_error(self):
+        schema = McpSchema.from_json_string(MCP_TOOLS_JSON)
+        resp = schema.dispatch(self._req("tools/call", {"name": "add", "arguments": {"a": 1, "b": 2}}))
+        self.assertTrue(resp["result"]["isError"])
 
     def test_builtins_not_exposed_as_tools(self):
+        schema = McpSchema.from_json_string(MCP_TOOLS_JSON)
         names = {t["name"] for t in
-                 self.schema.dispatch(self._req("tools/list", {}))["result"]["tools"]}
+                 schema.dispatch(self._req("tools/list", {}))["result"]["tools"]}
         self.assertNotIn("initialize", names)
         self.assertNotIn("tools/list", names)
         self.assertNotIn("ping", names)
+
+
+# ---------------------------------------------------
+# McpSchema structuredContent tests
+# ---------------------------------------------------
+
+class TestMcpStructuredContent(unittest.TestCase):
+    """
+    MCP structuredContent must be a dict (Record<string, unknown>).
+    It is only included in tools/call responses when:
+      - the tool has an object-type outputSchema
+      - the actual result is a dict
+    """
+
+    def _req(self, method, params=None, req_id=1):
+        r = {"jsonrpc": "2.0", "method": method, "id": req_id}
+        if params is not None:
+            r["params"] = params
+        return r
+
+    def test_dict_result_with_object_schema_includes_structured_content(self):
+        schema = McpSchema()
+
+        @schema.method()
+        def get_status() -> dict:
+            """Return status."""
+            return {"ok": True, "code": 0}
+
+        resp = schema.dispatch(self._req("tools/call", {"name": "get_status"}))
+        result = resp["result"]
+        self.assertFalse(result["isError"])
+        self.assertIn("structuredContent", result)
+        self.assertEqual(result["structuredContent"], {"ok": True, "code": 0})
+
+    def test_scalar_result_never_includes_structured_content(self):
+        schema = McpSchema()
+
+        @schema.method()
+        def add(a: float, b: float) -> float:
+            return a + b
+
+        resp = schema.dispatch(self._req("tools/call", {"name": "add", "arguments": {"a": 3, "b": 4}}))
+        result = resp["result"]
+        self.assertFalse(result["isError"])
+        self.assertNotIn("structuredContent", result)
+        self.assertIn("7", result["content"][0]["text"])
+
+    def test_scalar_output_schema_not_exposed_in_tools_list(self):
+        schema = McpSchema()
+
+        @schema.method()
+        def add(a: float, b: float) -> float:
+            return a + b
+
+        resp = schema.dispatch(self._req("tools/list", {}))
+        tools = {t["name"]: t for t in resp["result"]["tools"]}
+        self.assertNotIn("outputSchema", tools["add"])
+
+    def test_object_output_schema_exposed_in_tools_list(self):
+        schema = McpSchema()
+
+        @schema.method()
+        def get_status() -> dict:
+            """Return status."""
+            return {"ok": True}
+
+        resp = schema.dispatch(self._req("tools/list", {}))
+        tools = {t["name"]: t for t in resp["result"]["tools"]}
+        self.assertIn("outputSchema", tools["get_status"])
+        self.assertEqual(tools["get_status"]["outputSchema"], {"type": "object"})
+
+    def test_no_output_schema_no_structured_content(self):
+        schema = McpSchema()
+        schema.register("echo", lambda: "pong", description="Echo")
+
+        resp = schema.dispatch(self._req("tools/call", {"name": "echo"}))
+        result = resp["result"]
+        self.assertFalse(result["isError"])
+        self.assertNotIn("structuredContent", result)
+
+    def test_dict_result_without_output_schema_no_structured_content(self):
+        # Even if the function returns a dict, structuredContent is only set when
+        # the tool has an outputSchema (object type) declared.
+        schema = McpSchema()
+        schema.register("get_data", lambda: {"x": 1}, description="Get data")
+
+        resp = schema.dispatch(self._req("tools/call", {"name": "get_data"}))
+        result = resp["result"]
+        self.assertFalse(result["isError"])
+        self.assertNotIn("structuredContent", result)
+
+    def test_structured_content_roundtrip_via_register_explicit_schema(self):
+        schema = McpSchema()
+        schema.register(
+            name="get_info",
+            func=lambda: {"name": "robot", "version": "1.0"},
+            description="Get info",
+            output_schema={"type": "object", "properties": {"name": {"type": "string"}, "version": {"type": "string"}}},
+        )
+        resp = schema.dispatch(self._req("tools/call", {"name": "get_info"}))
+        result = resp["result"]
+        self.assertFalse(result["isError"])
+        self.assertIn("structuredContent", result)
+        self.assertEqual(result["structuredContent"]["name"], "robot")
 
 
 if __name__ == "__main__":

@@ -50,7 +50,7 @@ class McpSchema(JsonRpcSchema):
         super().__init__()
         self._server_name = name
         self._server_version = version
-        self._tools: dict = {}  # tool_name → {"description", "input_schema"}
+        self._tools: dict = {}  # tool_name → {"description", "input_schema", "output_schema"}
 
         # Register built-in MCP handlers directly into _methods so they
         # bypass the tools-tracking logic in our overridden register().
@@ -58,26 +58,31 @@ class McpSchema(JsonRpcSchema):
             "func": self._mcp_initialize,
             "description": "MCP initialize handshake",
             "input_schema": {"type": "object"},
+            "output_schema": None,
         }
         self._methods["notifications/initialized"] = {
             "func": lambda **_kwargs: None,
             "description": "",
             "input_schema": {"type": "object"},
+            "output_schema": None,
         }
         self._methods["notifications/cancelled"] = {
             "func": lambda **_kwargs: None,
             "description": "",
             "input_schema": {"type": "object"},
+            "output_schema": None,
         }
         self._methods["ping"] = {
             "func": lambda **_kwargs: {},
             "description": "MCP ping",
             "input_schema": {"type": "object"},
+            "output_schema": None,
         }
         self._methods["tools/list"] = {
             "func": self._mcp_tools_list,
             "description": "List available tools",
             "input_schema": {"type": "object"},
+            "output_schema": None,
         }
         self._methods["tools/call"] = {
             "func": self._mcp_tools_call,
@@ -90,6 +95,7 @@ class McpSchema(JsonRpcSchema):
                 },
                 "required": ["name"],
             },
+            "output_schema": None,
         }
 
     # ------------------------------------------------------------------
@@ -101,60 +107,34 @@ class McpSchema(JsonRpcSchema):
         name: str,
         func: Callable = None,
         description: str = None,
-        params: list = None,
         input_schema: dict = None,
+        output_schema: dict = None,
     ) -> None:
-        super().register(name, func, description=description, params=params, input_schema=input_schema)
+        super().register(name, func, description=description, input_schema=input_schema, output_schema=output_schema)
         if name not in self._BUILTIN_METHODS:
-            # super() already resolved description and input_schema — read them back
-            # so params= and func type hints are always reflected correctly.
-            self._tools[name] = {
-                "description": self._methods[name]["description"],
-                "input_schema": self._methods[name]["input_schema"],
+            # super() already resolved description, input_schema and output_schema —
+            # read them back so func type hints are always reflected correctly.
+            entry = self._methods[name]
+            tool = {
+                "description": entry["description"],
+                "input_schema": entry["input_schema"],
             }
+            output_schema = entry["output_schema"]
+            # MCP structuredContent must be a dict, so only expose outputSchema
+            # when the return type is an object schema.
+            if output_schema is not None and output_schema.get("type") == "object":
+                tool["output_schema"] = output_schema
+            self._tools[name] = tool
 
     # ------------------------------------------------------------------
-    # Class constructors
+    # Load — accepts MCP tools/list wrapper {"tools": [...]} or plain list
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_dict(cls, data, name: str = "magpie", version: str = "1.0.0") -> "McpSchema":
-        """
-        Load an McpSchema from MCP native tool-list format.
-
-        Accepts either a list of tool objects or a dict with a ``"tools"`` key::
-
-            # List form
-            tools = [
-                {"name": "add", "description": "Add two numbers",
-                 "inputSchema": {"type": "object", "properties": {"a": {...}, "b": {...}}}}
-            ]
-            schema = McpSchema.from_dict(tools)
-
-            # Dict form (e.g. from a saved tools/list response)
-            schema = McpSchema.from_dict({"tools": [...]})
-
-        After loading, attach implementations with ``@schema.handler(name)``.
-        """
-        if isinstance(data, list):
-            tools = data
-        elif isinstance(data, dict):
-            tools = data.get("tools", [])
-        else:
-            raise ValueError("from_dict expects a list of tool objects or a dict with 'tools' key")
-
-        schema = cls(name=name, version=version)
-        for tool in tools:
-            tool_name = tool.get("name")
-            if not tool_name:
-                raise ValueError(f"Tool entry missing 'name' field: {tool}")
-            schema.register(
-                tool_name,
-                func=None,
-                description=tool.get("description", ""),
-                input_schema=tool.get("inputSchema") or {"type": "object"},
-            )
-        return schema
+    def _load(cls, data, **kwargs) -> "McpSchema":
+        if isinstance(data, dict):
+            data = data.get("tools", [])
+        return super()._load(data, **kwargs)
 
     # ------------------------------------------------------------------
     # Built-in MCP handlers
@@ -171,14 +151,16 @@ class McpSchema(JsonRpcSchema):
         }
 
     def _mcp_tools_list(self, **_kwargs) -> dict:
-        tools = [
-            {
+        tools = []
+        for tool_name, meta in self._tools.items():
+            entry = {
                 "name": tool_name,
                 "description": meta["description"],
                 "inputSchema": meta["input_schema"],
             }
-            for tool_name, meta in self._tools.items()
-        ]
+            if meta.get("output_schema") is not None:
+                entry["outputSchema"] = meta["output_schema"]
+            tools.append(entry)
         return {"tools": tools}
 
     def _mcp_tools_call(self, name: str = None, arguments: dict = None, **_kwargs) -> dict:
@@ -192,10 +174,13 @@ class McpSchema(JsonRpcSchema):
             }
         try:
             result = entry["func"](**(arguments or {}))
-            return {
+            response = {
                 "content": [{"type": "text", "text": _to_text(result)}],
                 "isError": False,
             }
+            if self._tools[name].get("output_schema") is not None and isinstance(result, dict):
+                response["structuredContent"] = result
+            return response
         except Exception as e:
             return {
                 "content": [{"type": "text", "text": str(e)}],

@@ -19,7 +19,7 @@ from luxai.magpie.adapters.mcp import McpTransport
 from luxai.magpie.transport import ZMQRpcRequester
 from luxai.magpie.utils import Logger
 
-Logger.set_level("DEBUG")
+Logger.set_level("INFO")
 
 
 async def main():

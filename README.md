@@ -224,7 +224,7 @@ conn.connect()
 def handle(request):
     return {"status": "ok", "echo": request}
 
-server = MqttRpcResponder(conn, service_name="myrobot/motion")
+server = MqttRpcResponder(conn, service_name="myservice/actions")
 while True:
     try:
         server.handle_once(handler=handle, timeout=1.0)
@@ -245,7 +245,7 @@ from luxai.magpie.transport import MqttConnection, MqttRpcRequester
 conn = MqttConnection("mqtt://broker.hivemq.com:1883")
 conn.connect()
 
-client = MqttRpcRequester(conn, service_name="myrobot/motion")
+client = MqttRpcRequester(conn, service_name="myservice/actions")
 try:
     response = client.call({"action": "move", "x": 1.0}, timeout=5.0)
     print("Response:", response)
@@ -268,11 +268,11 @@ from luxai.magpie.transport import (
 
 conn = MqttConnection(
     "wss://broker.example.com:8884/mqtt",
-    client_id="robot-01",
+    client_id="node-01",
     options=MqttOptions(
-        auth=MqttAuthOptions(mode="username_password", username="robot", password="secret"),
+        auth=MqttAuthOptions(mode="username_password", username="node", password="secret"),
         tls=MqttTlsOptions(ca_file="/etc/ssl/certs/ca.pem", verify_peer=True),
-        will=MqttWillOptions(enabled=True, topic="robots/robot-01/status",
+        will=MqttWillOptions(enabled=True, topic="nodes/node-01/status",
                              payload="offline", qos=1, retain=True),
         defaults=MqttDefaultsOptions(publish_qos=1, subscribe_qos=1),
     ),
@@ -294,13 +294,13 @@ Video and audio frames are carried over native WebRTC **RTP media tracks** when 
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamWriter, WebRTCOptions
 
 conn = WebRTCConnection.with_mqtt(
-    "mqtt://broker.hivemq.com:1883", session_id="my-robot",
+    "mqtt://broker.hivemq.com:1883", session_id="my-node",
     options=WebRTCOptions(video_topics=["/camera/color/image"]),
 )
 conn.connect()
 
 writer = WebRtcStreamWriter(conn)
-writer.write({"motor": [0.1, 0.2, 0.3]}, topic="robot/state")   # → data channel
+writer.write({"telemetry": [0.1, 0.2, 0.3]}, topic="service/state")   # → data channel
 writer.write(ImageFrameRaw(...), topic="/camera/color/image")     # → RTP video track
 
 writer.close()
@@ -313,12 +313,12 @@ conn.disconnect()
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamReader, WebRTCOptions
 
 conn = WebRTCConnection.with_mqtt(
-    "mqtt://broker.hivemq.com:1883", session_id="my-robot",
+    "mqtt://broker.hivemq.com:1883", session_id="my-node",
     options=WebRTCOptions(video_topics=["/camera/color/image"]),
 )
 conn.connect()
 
-reader  = WebRtcStreamReader(conn, topic="robot/state")
+reader  = WebRtcStreamReader(conn, topic="service/state")
 vreader = WebRtcStreamReader(conn, topic="/camera/color/image")
 
 data, _  = reader.read(timeout=5.0)
@@ -342,13 +342,13 @@ No broker in the hot path — the data channel is bidirectional P2P, so no `repl
 ```python
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcResponder
 
-conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="my-robot-rpc")
+conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="my-node-rpc")
 conn.connect()
 
 def handle(request):
     return {"status": "ok", "echo": request}
 
-server = WebRTCRpcResponder(conn, service_name="robot/motion")
+server = WebRTCRpcResponder(conn, service_name="service/actions")
 while True:
     try:
         server.handle_once(handler=handle, timeout=1.0)
@@ -366,10 +366,10 @@ conn.disconnect()
 ```python
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcRequester
 
-conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="my-robot-rpc")
+conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="my-node-rpc")
 conn.connect()
 
-client = WebRTCRpcRequester(conn, service_name="robot/motion")
+client = WebRTCRpcRequester(conn, service_name="service/actions")
 try:
     response = client.call({"action": "move", "x": 1.0}, timeout=5.0)
     print("Response:", response)
@@ -397,7 +397,7 @@ opts = WebRTCOptions(
     audio_topics=["/mic/audio/stream"],
     use_media_channels=True,
 )
-conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", "my-robot", options=opts)
+conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", "my-node", options=opts)
 conn.connect()
 ```
 
@@ -405,14 +405,14 @@ conn.connect()
 
 ```python
 conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883",
-                                   session_id="my-robot", reconnect=True)
+                                   session_id="my-node", reconnect=True)
 ```
 
 ---
 
 ### Schema-based RPC
 
-`JsonRpcSchema` adds JSON-RPC 2.0 dispatch on top of any MAGPIE transport. Define your API once — shape, description, and types — then attach handlers and call methods by name. The same schema object is used on both sides.
+`JsonRpcSchema` adds JSON-RPC 2.0 dispatch on top of any MAGPIE transport. Define your API once — shape, description, and types — then attach handlers and call methods by name. The same schema object works on both sides.
 
 **Responder — three ways to define methods:**
 
@@ -422,40 +422,81 @@ from luxai.magpie.schema import JsonRpcSchema
 
 schema = JsonRpcSchema()
 
-# Way A: inline decorator — shape and handler in one step
+# Way A: decorator — shape and handler together (infers schema from type hints)
 @schema.method()
 def add(a: float, b: float) -> float:
     """Add two numbers."""
     return a + b
 
-# Way B: load from IDL dict, attach handler separately
-ROBOT_API = {
-    "move_motor": {
-        "description": "Move a motor to a target angle",
-        "params": {
-            "motor": {"type": "string", "required": True},
-            "angle": {"type": "number", "required": True},
+# Way B: load from a standard JSON Schema file, attach handlers separately
+schema2 = JsonRpcSchema.from_json_file("api.json")
+
+@schema2.handler("convert")
+def handle_convert(value, from_unit, to_unit):
+    return {"result": value, "unit": to_unit}
+
+# Way C: explicit register — full control over schema
+schema.register(
+    name="scale",
+    func=lambda value, factor: value * factor,
+    description="Scale a value",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "value":  {"type": "number"},
+            "factor": {"type": "number"},
         },
-    }
-}
-schema2 = JsonRpcSchema.from_dict(ROBOT_API)
-
-@schema2.handler("move_motor")
-def handle_move_motor(motor, angle):
-    return {"success": True}
-
-# Way C: programmatic registration
-schema.register("ping", lambda: "pong")
+        "required": ["value", "factor"],
+    },
+)
 
 server = ZMQRpcResponder("tcp://*:5556", schema=schema)
 while True:
     try:
-        server.handle_once(timeout=1.0)   # no handler arg needed
+        server.handle_once(timeout=1.0)
     except TimeoutError:
         pass
     except KeyboardInterrupt:
         server.close()
         break
+```
+
+The JSON file (`api.json`) uses standard MCP/JSON Schema format. `description` and `outputSchema` are optional; `inputSchema` defaults to `{}` if omitted. `outputSchema` must describe an object (`"type": "object"`) — scalar return types are expressed only in `content[0].text`, not as structured output.
+
+```json
+[
+  {
+    "name": "convert",
+    "description": "Convert a value from one unit to another",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value":     {"type": "number"},
+        "from_unit": {"type": "string"},
+        "to_unit":   {"type": "string"}
+      },
+      "required": ["value", "from_unit", "to_unit"]
+    }
+  },
+  {
+    "name": "get_status",
+    "description": "Return the current service status",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "service": {"type": "string"}
+      },
+      "required": ["service"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "status":  {"type": "string"},
+        "uptime":  {"type": "number"}
+      }
+    }
+  }
+]
 ```
 
 **Requester — proxy interface:**
@@ -464,7 +505,12 @@ while True:
 from luxai.magpie.transport import ZMQRpcRequester
 from luxai.magpie.schema import JsonRpcSchema, JsonRpcError
 
-schema = JsonRpcSchema.from_dict(ROBOT_API)
+# Define shape on the requester side (stub bodies are fine)
+schema = JsonRpcSchema()
+
+@schema.method()
+def add(a: float, b: float) -> float: ...
+
 client = ZMQRpcRequester("tcp://127.0.0.1:5556", schema=schema)
 
 # Proxy style — method name as attribute
@@ -477,7 +523,7 @@ result = client.call("add", a=3, b=4)       # → 7
 result = client.call("add", a=3, b=4, _timeout=5.0)
 
 try:
-    client.unknown_method()
+    client.call("nonexistent")
 except JsonRpcError as e:
     print(e.code, e.message)   # -32601 Method not found
 
@@ -490,11 +536,11 @@ client.close()
 
 MAGPIE has native MCP support on both sides of the connection — no separate MCP server process required.
 
-**Robot side** — `McpSchema` extends `JsonRpcSchema` with the full MCP handshake. Any registered method is automatically exposed as an MCP tool.
+**Server side** — `McpSchema` extends `JsonRpcSchema` with the full MCP handshake. Any registered method is automatically exposed as an MCP tool.
 
 **Agent / cloud side** — `McpTransport` is a FastMCP `ClientTransport` that wraps any MAGPIE `RpcRequester`. The caller creates and owns the requester; `McpTransport` borrows it.
 
-The key value proposition for robotics: a robot behind NAT connects **outbound** to a broker; an LLM agent on the cloud connects to the same broker. No port forwarding, no VPN.
+The key value proposition: a service behind NAT connects **outbound** to a broker; an LLM agent on the cloud connects to the same broker. No port forwarding, no VPN.
 
 ```
 pip install "luxai-magpie[mcp]"           # MCP + FastMCP (ZMQ always available)
@@ -502,22 +548,22 @@ pip install "luxai-magpie[mqtt,mcp]"      # add MQTT transport
 pip install "luxai-magpie[webrtc,mcp]"    # add WebRTC transport
 ```
 
-#### Robot side — serve tools over any transport
+#### Server side — serve tools over any transport
 
 ```python
 from luxai.magpie.schema import McpSchema
 
-schema = McpSchema(name="my-robot", version="1.0.0")
+schema = McpSchema(name="my-service", version="1.0.0")
 
 @schema.method()
-def move_motor(motor: str, angle: float) -> dict:
-    """Move a robot motor to a specific angle in radians."""
-    return {"success": True, "motor": motor, "angle": angle}
+def translate(text: str, target_lang: str) -> dict:
+    """Translate text into the target language."""
+    return {"translated": f"[{target_lang}] {text}", "lang": target_lang}
 
 @schema.method()
-def say(text: str) -> dict:
-    """Make the robot speak."""
-    return {"success": True}
+def summarize(text: str, max_length: int) -> dict:
+    """Summarize text to at most max_length characters."""
+    return {"summary": text[:max_length]}
 ```
 
 Attach to any responder:
@@ -527,18 +573,18 @@ Attach to any responder:
 from luxai.magpie.transport import ZMQRpcResponder
 server = ZMQRpcResponder("tcp://*:5556", schema=schema)
 
-# MQTT — robot behind NAT
+# MQTT — service behind NAT
 from luxai.magpie.transport.mqtt import MqttConnection
 from luxai.magpie.transport import MqttRpcResponder
 conn = MqttConnection("mqtt://broker.hivemq.com:1883")
 conn.connect()
-server = MqttRpcResponder(conn, service_name="robot-01", schema=schema)
+server = MqttRpcResponder(conn, service_name="node-01", schema=schema)
 
 # WebRTC — P2P, lowest latency
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcResponder
-conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="robot-01")
+conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="node-01")
 conn.connect()
-server = WebRTCRpcResponder(conn, service_name="robot-01", schema=schema)
+server = WebRTCRpcResponder(conn, service_name="node-01", schema=schema)
 ```
 
 Serve loop is the same for all:
@@ -573,11 +619,11 @@ async def main():
         for tool in tools:
             print(f"  {tool.name}: {tool.description}")
 
-        result = await client.call_tool("move_motor", {"motor": "shoulder", "angle": 1.57})
+        result = await client.call_tool("translate", {"text": "Hello", "target_lang": "fr"})
         print(result.content[0].text)
 
         try:
-            await client.call_tool("move_motor", {"motor": "bad", "angle": -999})
+            await client.call_tool("translate", {"text": "Hello"})   # missing target_lang
         except ToolError as e:
             print(f"tool error: {e}")
 
@@ -595,10 +641,10 @@ from luxai.magpie.transport import MqttRpcRequester
 
 conn = MqttConnection("mqtt://broker.hivemq.com:1883")
 conn.connect()
-req = MqttRpcRequester(conn, service_name="robot-01")
+req = MqttRpcRequester(conn, service_name="node-01")
 
 async with Client(McpTransport(req)) as client:
-    result = await client.call_tool("move_motor", {"motor": "shoulder", "angle": 1.57})
+    result = await client.call_tool("translate", {"text": "Hello", "target_lang": "fr"})
 
 req.close()
 conn.disconnect()
@@ -611,9 +657,9 @@ from luxai.magpie.schema import McpSchema
 
 schema = McpSchema.from_json_file("tools.json")   # MCP native format
 
-@schema.handler("move_motor")
-def handle_move_motor(motor: str, angle: float) -> dict:
-    return {"success": True}
+@schema.handler("translate")
+def handle_translate(text: str, target_lang: str) -> dict:
+    return {"translated": f"[{target_lang}] {text}", "lang": target_lang}
 ```
 
 ---
@@ -625,12 +671,12 @@ from luxai.magpie.discovery import ZconfDiscovery
 
 # Advertise a node
 with ZconfDiscovery() as disc:
-    disc.advertise_node("my-robot", port=5555, payload={"role": "robot"})
+    disc.advertise_node("my-node", port=5555, payload={"role": "service"})
     input("Press Enter to stop advertising...")
 
 # Discover nodes
 with ZconfDiscovery() as disc:
-    info = disc.resolve_node("my-robot", timeout=5.0)
+    info = disc.resolve_node("my-node", timeout=5.0)
     if info:
         ip = disc.pick_best_ip(info)
         print(f"Found at tcp://{ip}:{info.port}")
@@ -668,7 +714,7 @@ magpie-request tcp://127.0.0.1:5556 '{"jsonrpc":"2.0","method":"add","params":{"
 **`magpie-discovery`** — mDNS node discovery:
 ```bash
 magpie-discovery                                          # scan continuously
-magpie-discovery --advertise --port 5555 --id MY_ROBOT    # advertise
+magpie-discovery --advertise --port 5555 --id MY_NODE     # advertise
 ```
 
 **Audio / Video tools** (require `[audio]` / `[video]` extras):
@@ -701,8 +747,8 @@ magpie-read-mqtt mqtt://broker.hivemq.com:1883 "/magpie/+" --hz    # wildcard + 
 
 **`magpie-request-mqtt`**:
 ```bash
-magpie-request-mqtt mqtt://broker.hivemq.com:1883 myrobot/motion '{"action": "move"}' --pretty
-magpie-request-mqtt mqtt://broker.hivemq.com:1883 myrobot/motion @req.json --timeout 10
+magpie-request-mqtt mqtt://broker.hivemq.com:1883 myservice/actions '{"action": "run"}' --pretty
+magpie-request-mqtt mqtt://broker.hivemq.com:1883 myservice/actions @req.json --timeout 10
 ```
 
 > Advanced broker options (auth, TLS, QoS, LWT) can be passed via `--mqtt-params @params.json`.
@@ -719,22 +765,22 @@ Both peers use the same `session_id`. Signaling via `--signaling mqtt://...` (in
 
 **`magpie-write-webrtc` / `magpie-read-webrtc`**:
 ```bash
-magpie-write-webrtc my-robot /robot/state '{"x": 1.0}' --signaling mqtt://broker.hivemq.com:1883
-magpie-read-webrtc  my-robot /robot/state --signaling mqtt://broker.hivemq.com:1883 --pretty
+magpie-write-webrtc my-node /service/state '{"x": 1.0}' --signaling mqtt://broker.hivemq.com:1883
+magpie-read-webrtc  my-node /service/state --signaling mqtt://broker.hivemq.com:1883 --pretty
 ```
 
 **`magpie-request-webrtc`**:
 ```bash
-magpie-request-webrtc my-robot robot/motion '{"action": "move"}' \
+magpie-request-webrtc my-node service/actions '{"action": "run"}' \
     --signaling mqtt://broker.hivemq.com:1883 --pretty
 ```
 
 **Video / Audio over WebRTC**:
 ```bash
-magpie-video-capture-webrtc my-robot /camera --signaling mqtt://broker.hivemq.com:1883
-magpie-video-viewer-webrtc  my-robot /camera --signaling mqtt://broker.hivemq.com:1883
-magpie-audio-capture-webrtc my-robot /audio  --signaling mqtt://broker.hivemq.com:1883
-magpie-audio-player-webrtc  my-robot /audio  --signaling mqtt://broker.hivemq.com:1883
+magpie-video-capture-webrtc my-node /camera --signaling mqtt://broker.hivemq.com:1883
+magpie-video-viewer-webrtc  my-node /camera --signaling mqtt://broker.hivemq.com:1883
+magpie-audio-capture-webrtc my-node /audio  --signaling mqtt://broker.hivemq.com:1883
+magpie-audio-player-webrtc  my-node /audio  --signaling mqtt://broker.hivemq.com:1883
 ```
 
 ---

@@ -1,5 +1,6 @@
 import inspect
 import itertools
+import json
 from typing import Callable, Optional, get_type_hints
 
 from luxai.magpie.utils.logger import Logger
@@ -42,7 +43,7 @@ def _python_type_to_json_schema(py_type) -> dict:
 
 
 def _infer_input_schema(func: Callable) -> dict:
-    """Derive JSON Schema input object from a function's type hints."""
+    """Derive a JSON Schema input object from a function's type hints."""
     try:
         hints = get_type_hints(func)
         sig = inspect.signature(func)
@@ -66,46 +67,16 @@ def _infer_input_schema(func: Callable) -> dict:
         return {"type": "object"}
 
 
-def _params_list_to_input_schema(params: list) -> dict:
-    """Convert [(name, type), ...] to a JSON Schema object. All params are required."""
-    properties = {}
-    required = []
-    for name, py_type in params:
-        properties[name] = _python_type_to_json_schema(py_type)
-        required.append(name)
-    schema = {"type": "object", "properties": properties}
-    if required:
-        schema["required"] = required
-    return schema
-
-
-def _idl_params_to_input_schema(params: dict) -> dict:
-    """
-    Convert the MAGPIE custom IDL params dict to a JSON Schema object.
-
-    IDL format per param::
-
-        "l_eye": {"type": "array", "items": "integer", "required": true}
-        "duration": {"type": "number", "default": 0}
-    """
-    properties = {}
-    required = []
-    for name, spec in params.items():
-        prop = {}
-        if "type" in spec:
-            prop["type"] = spec["type"]
-        items = spec.get("items")
-        if items is not None:
-            prop["items"] = {"type": items} if isinstance(items, str) else items
-        if "default" in spec:
-            prop["default"] = spec["default"]
-        properties[name] = prop
-        if spec.get("required", False):
-            required.append(name)
-    schema = {"type": "object", "properties": properties}
-    if required:
-        schema["required"] = required
-    return schema
+def _infer_output_schema(func: Callable) -> Optional[dict]:
+    """Derive a JSON Schema from the function's return type annotation."""
+    try:
+        hints = get_type_hints(func)
+        return_type = hints.get("return")
+        if return_type is None or return_type is type(None):
+            return None
+        return _python_type_to_json_schema(return_type)
+    except Exception:
+        return None
 
 
 class JsonRpcSchema(BaseSchema):
@@ -113,25 +84,30 @@ class JsonRpcSchema(BaseSchema):
     JSON-RPC 2.0 schema — dispatch layer for the responder side,
     envelope builder/unwrapper for the requester side.
 
-    Methods can be defined in four ways:
+    Methods can be defined in three ways:
 
-    A) From a dict/file (custom IDL)::
-
-        schema = JsonRpcSchema.from_dict(ROBOT_API)
-        schema = JsonRpcSchema.from_json_file("robot_api.json")
-        schema = JsonRpcSchema.from_json_string('{"add": {...}}')
-
-    B) Programmatic, without handler (requester side)::
-
-        schema.register("face_look", params=[("l_eye", list), ("r_eye", list)])
-
-    C) Decorator — defines shape and attaches handler together (responder side)::
+    A) Decorator — defines shape and attaches handler together::
 
         @schema.method()
-        def add(a: int, b: int) -> int:
+        def add(a: float, b: float) -> float:
             return a + b
 
-    D) Separate definition and handler (responder side, after from_dict)::
+    B) Programmatic register with explicit JSON Schema::
+
+        schema.register(
+            name="add",
+            description="Add two numbers",
+            input_schema={
+                "type": "object",
+                "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+                "required": ["a", "b"],
+            },
+            output_schema={"type": "number"},
+        )
+
+    C) Load from a JSON file, then attach handlers::
+
+        schema = JsonRpcSchema.from_json_file("api.json")
 
         @schema.handler("face_look")
         def handle_face_look(l_eye, r_eye, duration=0.0):
@@ -139,7 +115,7 @@ class JsonRpcSchema(BaseSchema):
     """
 
     def __init__(self):
-        self._methods: dict = {}  # name → {"func", "description", "input_schema"}
+        self._methods: dict = {}  # name → {"func", "description", "input_schema", "output_schema"}
         self._id_counter = itertools.count(1)
 
     # ------------------------------------------------------------------
@@ -151,8 +127,8 @@ class JsonRpcSchema(BaseSchema):
         name: str,
         func: Callable = None,
         description: str = None,
-        params: list = None,
         input_schema: dict = None,
+        output_schema: dict = None,
     ) -> None:
         """
         Register a method by name.
@@ -163,18 +139,16 @@ class JsonRpcSchema(BaseSchema):
                 when attaching the handler later via @schema.handler().
             description: Human-readable description. Inferred from func docstring
                 if not provided.
-            params: [(name, type), ...] shorthand for defining input schema without
-                a handler function. All listed params are treated as required.
-            input_schema: Explicit JSON Schema object for the params. Takes
-                precedence over params and func type hints.
+            input_schema: JSON Schema object describing the parameters. Inferred
+                from func type hints if not provided.
+            output_schema: JSON Schema object describing the return value. Optional.
+                Inferred from func return type annotation if not provided.
         """
         if input_schema is None:
-            if params is not None:
-                input_schema = _params_list_to_input_schema(params)
-            elif func is not None:
-                input_schema = _infer_input_schema(func)
-            else:
-                input_schema = {"type": "object"}
+            input_schema = _infer_input_schema(func) if func is not None else {"type": "object"}
+
+        if output_schema is None and func is not None:
+            output_schema = _infer_output_schema(func)
 
         if description is None and func is not None:
             description = inspect.getdoc(func) or ""
@@ -183,6 +157,7 @@ class JsonRpcSchema(BaseSchema):
             "func": func,
             "description": description or "",
             "input_schema": input_schema,
+            "output_schema": output_schema,
         }
 
     def method(self, name: str = None):
@@ -210,9 +185,9 @@ class JsonRpcSchema(BaseSchema):
         """
         Decorator — attaches an implementation to an already-defined method.
 
-        Use after loading a schema from dict/file to attach handlers::
+        Use after loading a schema from JSON or after register()::
 
-            schema = JsonRpcSchema.from_dict(ROBOT_API)
+            schema = JsonRpcSchema.from_json_file("api.json")
 
             @schema.handler("face_look")
             def handle_face_look(l_eye, r_eye, duration=0.0):
@@ -222,7 +197,7 @@ class JsonRpcSchema(BaseSchema):
             if name not in self._methods:
                 raise KeyError(
                     f"'{name}' is not defined in this schema. "
-                    "Call register() or from_dict() first."
+                    "Call register() or from_json_* first."
                 )
             self._methods[name]["func"] = func
             if not self._methods[name]["description"]:
@@ -231,38 +206,55 @@ class JsonRpcSchema(BaseSchema):
         return decorator
 
     # ------------------------------------------------------------------
-    # Class constructors
+    # Load from JSON / YAML
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_dict(cls, data: dict) -> "JsonRpcSchema":
+    def _load(cls, data, **kwargs) -> "JsonRpcSchema":
         """
-        Load a schema from the MAGPIE custom IDL dict format::
+        Internal: build schema from already-parsed data.
 
-            {
-                "face_look": {
-                    "description": "Move robot eyes",
-                    "params": {
-                        "l_eye":    {"type": "array", "required": true},
-                        "r_eye":    {"type": "array", "required": true},
-                        "duration": {"type": "number", "default": 0}
-                    },
-                    "returns": {"type": "boolean"}
-                }
-            }
+        Expected format — a JSON array of method objects::
 
-        Methods are defined without handlers. Attach handlers with
-        @schema.handler() on the responder side.
+            [
+              {
+                "name": "add",
+                "description": "Add two numbers",
+                "inputSchema": {"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}, "required": ["a", "b"]},
+                "outputSchema": {"type": "number"}
+              }
+            ]
+
+        Methods are registered without handlers. Attach handlers with
+        ``@schema.handler(name)`` on the responder side.
         """
-        schema = cls()
-        for method_name, spec in data.items():
+        if not isinstance(data, list):
+            raise ValueError("Expected a JSON array of method objects")
+
+        schema = cls(**kwargs)
+        for entry in data:
+            method_name = entry.get("name")
+            if not method_name:
+                raise ValueError(f"Method entry missing 'name' field: {entry}")
             schema.register(
-                method_name,
+                name=method_name,
                 func=None,
-                description=spec.get("description", ""),
-                input_schema=_idl_params_to_input_schema(spec.get("params", {})),
+                description=entry.get("description", ""),
+                input_schema=entry.get("inputSchema") or {"type": "object"},
+                output_schema=entry.get("outputSchema"),
             )
         return schema
+
+    @classmethod
+    def from_json_string(cls, s: str, **kwargs) -> "JsonRpcSchema":
+        """Load schema from a JSON string. See ``_load`` for the expected format."""
+        return cls._load(json.loads(s), **kwargs)
+
+    @classmethod
+    def from_json_file(cls, path: str, **kwargs) -> "JsonRpcSchema":
+        """Load schema from a JSON file. See ``_load`` for the expected format."""
+        with open(path) as f:
+            return cls._load(json.load(f), **kwargs)
 
     # ------------------------------------------------------------------
     # Internal helpers
