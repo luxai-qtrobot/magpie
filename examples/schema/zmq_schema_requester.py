@@ -11,63 +11,56 @@ from luxai.magpie.schema import JsonRpcSchema, JsonRpcError
 from luxai.magpie.utils import Logger
 
 
-MATH_API = """
-[
-  {
-    "name": "add",
-    "description": "Add two numbers",
-    "inputSchema": {
-      "type": "object",
-      "properties": { "a": {"type": "number"}, "b": {"type": "number"} },
-      "required": ["a", "b"]
-    }
-  },
-  {
-    "name": "sub",
-    "description": "Subtract b from a",
-    "inputSchema": {
-      "type": "object",
-      "properties": { "a": {"type": "number"}, "b": {"type": "number"} },
-      "required": ["a", "b"]
-    }
-  },
-  {
-    "name": "mul",
-    "description": "Multiply two numbers",
-    "inputSchema": {
-      "type": "object",
-      "properties": { "a": {"type": "number"}, "b": {"type": "number"} },
-      "required": ["a", "b"]
-    }
-  },
-  {
-    "name": "div",
-    "description": "Divide a by b",
-    "inputSchema": {
-      "type": "object",
-      "properties": { "a": {"type": "number"}, "b": {"type": "number"} },
-      "required": ["a", "b"]
-    }
-  }
-]
-"""
-
 # Any of these produce an equivalent schema — pick one:
 
-# Way A — from JSON string
-schema = JsonRpcSchema.from_json_string(MATH_API)
+# Way A — from a Python list
+schema = JsonRpcSchema.from_json([
+    {
+        "name": "add",
+        "description": "Add two numbers",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+            "required": ["a", "b"],
+        },
+    },
+    {
+        "name": "sub",
+        "description": "Subtract b from a",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+            "required": ["a", "b"],
+        },
+    },
+    {
+        "name": "mul",
+        "description": "Multiply two numbers",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+            "required": ["a", "b"],
+        },
+    },
+    {
+        "name": "div",
+        "description": "Divide a by b",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+            "required": ["a", "b"],
+        },
+    },
+])
 
-# Way A — from JSON file (uncomment to use)
-# schema = JsonRpcSchema.from_json_file("math_api.json")
-
-# Way B — programmatic, explicit JSON Schema
+# Way B — programmatic register
 # schema = JsonRpcSchema()
-# schema.register(name="add", input_schema={"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}, "required": ["a", "b"]})
-# schema.register(name="sub", input_schema={"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}, "required": ["a", "b"]})
-# schema.register(name="mul", input_schema={"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}, "required": ["a", "b"]})
-# schema.register(name="div", input_schema={"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}, "required": ["a", "b"]})
+# schema.register(name="add", input_schema=ab)
+# schema.register(name="sub", input_schema=ab)
+# schema.register(name="mul", input_schema=ab)
+# schema.register(name="div", input_schema=ab)
 
-# Way E — decorator with stub bodies
+# Way C — decorator with stub bodies
 # schema = JsonRpcSchema()
 # @schema.method()
 # def add(a: float, b: float) -> float: ...

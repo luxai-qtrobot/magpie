@@ -210,26 +210,23 @@ class JsonRpcSchema(BaseSchema):
     # ------------------------------------------------------------------
 
     @classmethod
-    def _load(cls, data, **kwargs) -> "JsonRpcSchema":
+    def from_json(cls, data: list, **kwargs) -> "JsonRpcSchema":
         """
-        Internal: build schema from already-parsed data.
+        Load schema from a parsed Python list of method objects::
 
-        Expected format — a JSON array of method objects::
-
-            [
-              {
-                "name": "add",
-                "description": "Add two numbers",
-                "inputSchema": {"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}, "required": ["a", "b"]},
-                "outputSchema": {"type": "number"}
-              }
-            ]
+            schema = JsonRpcSchema.from_json([
+                {
+                    "name": "add",
+                    "description": "Add two numbers",
+                    "inputSchema": {"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}, "required": ["a", "b"]},
+                },
+            ])
 
         Methods are registered without handlers. Attach handlers with
         ``@schema.handler(name)`` on the responder side.
         """
         if not isinstance(data, list):
-            raise ValueError("Expected a JSON array of method objects")
+            raise ValueError("Expected a list of method objects")
 
         schema = cls(**kwargs)
         for entry in data:
@@ -247,14 +244,14 @@ class JsonRpcSchema(BaseSchema):
 
     @classmethod
     def from_json_string(cls, s: str, **kwargs) -> "JsonRpcSchema":
-        """Load schema from a JSON string. See ``_load`` for the expected format."""
-        return cls._load(json.loads(s), **kwargs)
+        """Load schema from a JSON string."""
+        return cls.from_json(json.loads(s), **kwargs)
 
     @classmethod
     def from_json_file(cls, path: str, **kwargs) -> "JsonRpcSchema":
-        """Load schema from a JSON file. See ``_load`` for the expected format."""
+        """Load schema from a JSON file."""
         with open(path) as f:
-            return cls._load(json.load(f), **kwargs)
+            return cls.from_json(json.load(f), **kwargs)
 
     # ------------------------------------------------------------------
     # Internal helpers

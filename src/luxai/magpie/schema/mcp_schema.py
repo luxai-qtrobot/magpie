@@ -127,14 +127,14 @@ class McpSchema(JsonRpcSchema):
             self._tools[name] = tool
 
     # ------------------------------------------------------------------
-    # Load — accepts MCP tools/list wrapper {"tools": [...]} or plain list
+    # Load — accepts {"tools": [...]} wrapper or plain list
     # ------------------------------------------------------------------
 
     @classmethod
-    def _load(cls, data, **kwargs) -> "McpSchema":
+    def from_json(cls, data, **kwargs) -> "McpSchema":
         if isinstance(data, dict):
             data = data.get("tools", [])
-        return super()._load(data, **kwargs)
+        return super().from_json(data, **kwargs)
 
     # ------------------------------------------------------------------
     # Built-in MCP handlers

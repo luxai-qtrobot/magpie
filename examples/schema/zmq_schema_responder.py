@@ -13,32 +13,28 @@ from luxai.magpie.schema import JsonRpcSchema
 from luxai.magpie.utils import Logger
 
 
-# ── Way A: load API from JSON string (no handlers yet) ──────────────
+# ── Way A: load API from a Python list, attach handlers separately ──
 
-MATH_API = """
-[
-  {
-    "name": "add",
-    "description": "Add two numbers",
-    "inputSchema": {
-      "type": "object",
-      "properties": { "a": {"type": "number"}, "b": {"type": "number"} },
-      "required": ["a", "b"]
-    }
-  },
-  {
-    "name": "sub",
-    "description": "Subtract b from a",
-    "inputSchema": {
-      "type": "object",
-      "properties": { "a": {"type": "number"}, "b": {"type": "number"} },
-      "required": ["a", "b"]
-    }
-  }
-]
-"""
-
-schema = JsonRpcSchema.from_json_string(MATH_API)
+schema = JsonRpcSchema.from_json([
+    {
+        "name": "add",
+        "description": "Add two numbers",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+            "required": ["a", "b"],
+        },
+    },
+    {
+        "name": "sub",
+        "description": "Subtract b from a",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+            "required": ["a", "b"],
+        },
+    },
+])
 
 
 # ── Way D: attach handlers to pre-defined methods ───────────────────
