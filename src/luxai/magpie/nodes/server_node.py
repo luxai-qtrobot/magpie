@@ -20,7 +20,7 @@ class ServerNode(BaseNode):
 
     def __init__(self,
                  responder: RpcResponder,
-                 handler: RpcHandlerType,
+                 handler: RpcHandlerType = None,
                  max_workers: int = 4,
                  poll_timeout: float = 0.01,
                  name: str = None,
@@ -32,12 +32,16 @@ class ServerNode(BaseNode):
         Args:
             responder (RpcResponder): Transport-level responder (e.g., ZMQRpcResponder).
             handler (callable): Function with signature handler(request_obj) -> response_obj.
+                Optional when a schema is set on the responder.
+                When both are provided, handler takes priority.
             max_workers (int): Maximum number of worker threads for handling requests.
             poll_timeout (float): Timeout in seconds used when waiting for new requests.
             name (str, optional): Name of the node.
             paused (bool, optional): Start the node in paused state.
             setup_kwargs (dict, optional): Extra kwargs passed to setup().
         """
+        if handler is None and getattr(responder, '_schema', None) is None:
+            raise ValueError("ServerNode: a handler or a schema on the responder is required")
         self.responder = responder
         self.handler = handler
         self.max_workers = max_workers
@@ -59,10 +63,14 @@ class ServerNode(BaseNode):
         """
         def job():
             try:
-                response_obj = self.handler(request_obj)
+                if self.handler is not None:
+                    response_obj = self.handler(request_obj)
+                else:
+                    response_obj = self.responder._schema.dispatch(request_obj)
+                    if response_obj is None:  # notification — no reply needed
+                        return
             except Exception as e:
                 Logger.warning(f"{self.name}: handler error: {e}")
-                # You might want to send an error response here instead.
                 return
 
             try:
