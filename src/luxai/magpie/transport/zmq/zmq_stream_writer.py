@@ -42,11 +42,13 @@ class ZmqStreamWriter(StreamWriter):
 
         # Apply delivery mode for writer side
         if self.delivery == "latest":
-            # SNDHWM=1 + CONFLATE: keep only the latest message per subscriber,
-            # replacing stale frames rather than queueing or dropping new ones.
-            # Both must be set before bind/connect.
+            # ZMQ_CONFLATE is intentionally NOT set here: it is incompatible with
+            # multipart messages (ZMQ docs: "not supported with multipart messages").
+            # With CONFLATE on PUB, only the last *frame* is kept, so the topic
+            # frame is silently discarded and the SUB subscription filter drops
+            # every message. SNDHWM=1 is sufficient: it caps the per-subscriber
+            # send queue to one message, providing "drop-old" semantics.
             self.socket.setsockopt(zmq.SNDHWM, 1)
-            self.socket.setsockopt(zmq.CONFLATE, 1)
 
         # Bind or connect
         if bind:
