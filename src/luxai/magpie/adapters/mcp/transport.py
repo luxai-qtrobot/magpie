@@ -90,25 +90,54 @@ class McpTransport(ClientTransport):
         write_stream, write_stream_reader = anyio.create_memory_object_stream(max_buffer_size=64)
 
         async def _bridge():
-            async with write_stream_reader, read_stream_writer:
-                async for msg in write_stream_reader:
-                    msg_dict = json.loads(
-                        msg.message.model_dump_json(by_alias=True, exclude_none=True)
-                    )
-                    if "id" not in msg_dict:
-                        continue
-                    try:
-                        reply_dict = await anyio.to_thread.run_sync(
-                            lambda d=msg_dict: self._requester.call(d, timeout=self._timeout)
+            async with write_stream_reader:
+                async with anyio.create_task_group() as call_tg:
+                    async for msg in write_stream_reader:
+                        msg_dict = json.loads(
+                            msg.message.model_dump_json(by_alias=True, exclude_none=True)
                         )
-                        if reply_dict is not None:
-                            reply_msg = _SessionMessage(
-                                message=_JSONRPC_ADAPTER.validate_python(reply_dict)
-                            )
-                            await read_stream_writer.send(reply_msg)
-                    except Exception as exc:
-                        Logger.debug(f"McpTransport: call error: {exc}")
-                        await read_stream_writer.send(exc)
+                        if "id" not in msg_dict:
+                            continue
+
+                        async def _handle_one(d=msg_dict):
+                            try:
+                                reply_dict = await anyio.to_thread.run_sync(
+                                    lambda: self._requester.call(d, timeout=self._timeout)
+                                )
+                                if reply_dict is None:
+                                    return
+                                # Convert magpie error dict to a proper JSON-RPC error response
+                                # so the MCP session handles it gracefully instead of crashing.
+                                if isinstance(reply_dict, dict) and not reply_dict.get("status", True):
+                                    error_msg = reply_dict.get("error", "Unknown error")
+                                    Logger.debug(f"McpTransport: magpie error: {error_msg}")
+                                    reply_dict = {
+                                        "jsonrpc": "2.0",
+                                        "id": d.get("id"),
+                                        "error": {"code": -32000, "message": error_msg},
+                                    }
+                                reply_msg = _SessionMessage(
+                                    message=_JSONRPC_ADAPTER.validate_python(reply_dict)
+                                )
+                                await read_stream_writer.send(reply_msg)
+                            except Exception as exc:
+                                Logger.debug(f"McpTransport: call error: {exc}")
+                                error_msg = str(exc)
+                                reply_dict = {
+                                    "jsonrpc": "2.0",
+                                    "id": d.get("id"),
+                                    "error": {"code": -32000, "message": error_msg},
+                                }
+                                try:
+                                    reply_msg = _SessionMessage(
+                                        message=_JSONRPC_ADAPTER.validate_python(reply_dict)
+                                    )
+                                    await read_stream_writer.send(reply_msg)
+                                except Exception:
+                                    await read_stream_writer.send(exc)
+
+                        call_tg.start_soon(_handle_one)
+            await read_stream_writer.aclose()
 
         async with anyio.create_task_group() as tg:
             tg.start_soon(_bridge)
@@ -117,3 +146,4 @@ class McpTransport(ClientTransport):
             tg.cancel_scope.cancel()
 
         Logger.debug("McpTransport: session ended.")
+    
