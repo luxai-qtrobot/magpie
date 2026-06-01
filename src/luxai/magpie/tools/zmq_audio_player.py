@@ -207,8 +207,8 @@ def main():
         stream_reader=ZmqStreamReader(endpoint=args.endpoint,
                                     topic=args.topic,
                                     bind=args.bind,
-                                    queue_size=1,                                    
-                                    delivery="latest"),
+                                    queue_size=10,
+                                    delivery="reliable"),
                                     setup_kwargs={
                                         'latency': args.latency,
                                         'show_statistics': args.verbose,
