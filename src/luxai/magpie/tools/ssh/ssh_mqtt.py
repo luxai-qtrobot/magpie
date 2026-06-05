@@ -97,13 +97,12 @@ def _run_client(uri: str, node_id: str, mqtt_params: dict | None,
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, encoding='utf-8') as f:
             json.dump(mqtt_params, f)
             tmpfile = f.name
-        # Forward slashes: shlex.quote leaves the path unquoted on Windows (cmd.exe-safe)
+        # Forward slashes: shlex.quote leaves the path unquoted on Windows (cmd.exe-safe)        
         extra_args += ["--mqtt-params", f"@{Path(tmpfile).as_posix()}"]
     if timeout != 10.0:
         extra_args += ["--timeout", str(timeout)]
 
-    proxy_cmd = build_proxy_command("magpie-ssh-mqtt", node_id, extra_args)
-    Logger.info(proxy_cmd)
+    proxy_cmd = build_proxy_command("magpie-ssh-mqtt", node_id, extra_args)    
     # Only append node_id as SSH destination when ssh_extra has no destination.
     # A destination is any non-flag argument (not starting with '-').
     has_destination = any(not a.startswith("-") for a in ssh_extra)
