@@ -19,7 +19,6 @@ Two usage modes:
   Then: ssh my-node  (or VS Code Remote, scp, rsync, …)
 """
 import argparse
-import os
 import sys
 import threading
 
@@ -92,22 +91,49 @@ def _run_proxy(node_id: str, signaling: str, mqtt_params: dict,
     conn.disconnect()
 
 
-def _run_client(node_id: str, signaling: str, mqtt_params_raw: str,
-                webrtc_options_raw: str, timeout: float, ssh_extra: list) -> None:
-    """Client mode: exec into ssh with this tool as ProxyCommand."""
+def _run_client(node_id: str, signaling: str, mqtt_params: dict | None,
+                webrtc_options: dict | None, timeout: float, ssh_extra: list) -> None:
+    """Client mode: run ssh with this tool as ProxyCommand."""
+    import subprocess
+    import json
+    import tempfile
+    import os
+    from pathlib import Path
+
     extra_args = ["--signaling", signaling]
-    if mqtt_params_raw:
-        extra_args += ["--mqtt-params", mqtt_params_raw]
-    if webrtc_options_raw:
-        extra_args += ["--webrtc-options", webrtc_options_raw]
+    tmpfiles = []
+
+    if mqtt_params:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, encoding='utf-8') as f:
+            json.dump(mqtt_params, f)
+            tmpfiles.append(f.name)
+        extra_args += ["--mqtt-params", f"@{Path(tmpfiles[-1]).as_posix()}"]
+
+    if webrtc_options:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, encoding='utf-8') as f:
+            json.dump(webrtc_options, f)
+            tmpfiles.append(f.name)
+        extra_args += ["--webrtc-options", f"@{Path(tmpfiles[-1]).as_posix()}"]
+
     if timeout != 30.0:
         extra_args += ["--timeout", str(timeout)]
 
     proxy_cmd = build_proxy_command("magpie-ssh-webrtc", node_id, extra_args)
 
-    ssh_cmd = ["ssh", "-o", f"ProxyCommand={proxy_cmd}"] + ssh_extra + [node_id]
-    Logger.debug(f"magpie-ssh-webrtc: exec: {' '.join(ssh_cmd)}")
-    os.execvp("ssh", ssh_cmd)
+    # Only append node_id as SSH destination when ssh_extra has no destination.
+    # A destination is any non-flag argument (not starting with '-').
+    has_destination = any(not a.startswith("-") for a in ssh_extra)
+    destination = [] if has_destination else [node_id]
+    ssh_cmd = ["ssh", "-o", f"ProxyCommand={proxy_cmd}"] + ssh_extra + destination
+    Logger.debug(f"magpie-ssh-webrtc: running: {ssh_cmd}")
+    try:
+        sys.exit(subprocess.run(ssh_cmd).returncode)
+    finally:
+        for tmp in tmpfiles:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
 
 
 def main():
@@ -136,33 +162,28 @@ Examples:
                         metavar="URL",
                         help="Signaling URL: mqtt://host:port or mqtts://host:port "
                              "(default: mqtt://127.0.0.1:1883)")
-    parser.add_argument("--mqtt-params", type=str, default=None,
-                        dest="mqtt_params_raw", metavar="JSON|@FILE",
+    parser.add_argument("--mqtt-params", type=mqtt_params_type, default=None,
+                        dest="mqtt_params", metavar="@FILE.json",
                         help="MQTT signaling options (auth, TLS, …) as JSON or @file.json.")
-    parser.add_argument("--webrtc-options", type=str, default=None,
-                        dest="webrtc_options_raw", metavar="JSON|@FILE",
+    parser.add_argument("--webrtc-options", type=webrtc_options_type, default=None,
+                        dest="webrtc_options", metavar="@FILE.json",
                         help="WebRTC options (STUN/TURN servers, …) as JSON or @file.json.")
     parser.add_argument("--timeout", type=float, default=30.0,
                         help="WebRTC handshake timeout in seconds (default: 30)")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Enable DEBUG logging.")
+    parser.add_argument("ssh_args", nargs=argparse.REMAINDER, metavar="...",
+                        help="SSH options and/or destination (user@host) passed to ssh.")
 
-    args, ssh_extra = parser.parse_known_args()
+    args = parser.parse_args()
+    ssh_extra = args.ssh_args
     Logger.set_level("DEBUG" if args.verbose else "INFO")
 
-    mqtt_params = None
-    if args.mqtt_params_raw:
-        mqtt_params = mqtt_params_type(args.mqtt_params_raw)
-
-    webrtc_options = None
-    if args.webrtc_options_raw:
-        webrtc_options = webrtc_options_type(args.webrtc_options_raw)
-
     if args.proxy:
-        _run_proxy(args.node_id, args.signaling, mqtt_params, webrtc_options, args.timeout)
+        _run_proxy(args.node_id, args.signaling, args.mqtt_params, args.webrtc_options, args.timeout)
     else:
-        _run_client(args.node_id, args.signaling, args.mqtt_params_raw,
-                    args.webrtc_options_raw, args.timeout, ssh_extra)
+        _run_client(args.node_id, args.signaling, args.mqtt_params,
+                    args.webrtc_options, args.timeout, ssh_extra)
 
 
 if __name__ == "__main__":

@@ -137,7 +137,19 @@ def connect_sshd(host: str, port: int) -> socket.socket:
 # ProxyCommand string reconstruction helpers
 # ---------------------------------------------------------------------------
 
+def _quote_arg(s: str) -> str:
+    """Quote one ProxyCommand argument for the current platform's shell."""
+    if sys.platform == "win32":
+        # Windows OpenSSH runs ProxyCommand via cmd.exe, which uses double-quote
+        # quoting and treats single quotes as literal characters (unlike POSIX).
+        # Only quote when the argument actually contains cmd.exe delimiters.
+        if s and not any(c in s for c in ' \t\n"&|<>^'):
+            return s
+        return '"' + s.replace('"', '""') + '"'
+    return shlex.quote(s)
+
+
 def build_proxy_command(prog: str, node_id: str, extra_args: list) -> str:
     """Build a ProxyCommand string for use in ~/.ssh/config or -o ProxyCommand=."""
     parts = [prog, "--proxy"] + extra_args + [node_id]
-    return " ".join(shlex.quote(p) for p in parts)
+    return " ".join(_quote_arg(p) for p in parts)
