@@ -67,7 +67,7 @@ Whether the wire is ZeroMQ, MQTT, WebRTC, or something entirely custom, the appl
 - **Typed frames** — `ImageFrameJpeg`, `ImageFrameCV`, `AudioFrameRaw`, `AudioFrameFlac`, and more; automatic serialization/deserialization across all transports
 - **Node helpers** — `SourceNode`, `SinkNode`, `ProcessNode`, `ServerNode` add lifecycle and thread management on top of the raw transport primitives
 - **Network discovery** — mDNS/Zeroconf node advertisement and scanning via `ZconfDiscovery`
-- **CLI tools** — `magpie-write`, `magpie-read`, `magpie-request` and MQTT/WebRTC equivalents; video/audio capture and playback tools
+- **Rich CLI toolset** — streaming read/write, RPC request, video/audio capture and playback, SSH tunneling, and network discovery; available across ZMQ, MQTT, and WebRTC transports
 - **Lightweight core** — ZeroMQ is the only core dependency; all media and protocol extras are opt-in
 
 ---
@@ -807,7 +807,7 @@ magpie-ssh-mqtt mqtt://mqtt.example.com:1883 my-robot ls -l      # run a command
 magpie-ssh-mqtt mqtt://mqtt.example.com:1883 my-robot -l alice   # specify user
 ```
 
-> For ProxyCommand mode, VS Code Remote SSH, TLS/auth options, cloud brokers (Ably), and more, see [docs/ssh-mqtt.md](docs/ssh-mqtt.md).
+> For ProxyCommand mode, VS Code Remote SSH, TLS/auth options, cloud brokers (Ably), and more, see [SSH over MQTT](docs/ssh-mqtt.md).
 
 ---
 
