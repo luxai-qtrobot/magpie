@@ -125,8 +125,6 @@ magpie-audio-capture-webrtc = "luxai.magpie.tools.webrtc_audio_capture:main"
 magpie-audio-player-webrtc = "luxai.magpie.tools.webrtc_audio_player:main"
 magpie-ssh-server-mqtt = "luxai.magpie.tools.ssh.ssh_server_mqtt:main"
 magpie-ssh-mqtt = "luxai.magpie.tools.ssh.ssh_mqtt:main"
-magpie-ssh-server-webrtc = "luxai.magpie.tools.ssh.ssh_server_webrtc:main"
-magpie-ssh-webrtc = "luxai.magpie.tools.ssh.ssh_webrtc:main"
 
 # -----------------------------
 # setuptools configuration

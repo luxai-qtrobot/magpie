@@ -48,6 +48,7 @@ Whether the wire is ZeroMQ, MQTT, WebRTC, or something entirely custom, the appl
   - [ZMQ Tools](#zmq-tools)
   - [MQTT Tools](#mqtt-tools)
   - [WebRTC Tools](#webrtc-tools)
+  - [SSH Tools](#ssh-tools)
 - [Architecture](#architecture)
 - [Related Projects](#related-projects)
 - [License](#license)
@@ -179,7 +180,7 @@ MQTT uses a **shared connection** — create it once, pass it to any number of w
 ```python
 from luxai.magpie.transport import MqttConnection, MqttStreamWriter
 
-conn = MqttConnection("mqtt://broker.hivemq.com:1883")
+conn = MqttConnection("mqtt://mqtt.example.com:1883")
 conn.connect()
 
 writer = MqttStreamWriter(conn)
@@ -194,7 +195,7 @@ conn.disconnect()
 ```python
 from luxai.magpie.transport import MqttConnection, MqttStreamReader
 
-conn = MqttConnection("mqtt://broker.hivemq.com:1883")
+conn = MqttConnection("mqtt://mqtt.example.com:1883")
 conn.connect()
 
 reader = MqttStreamReader(conn, topic="sensors/temperature")
@@ -218,7 +219,7 @@ conn.disconnect()
 ```python
 from luxai.magpie.transport import MqttConnection, MqttRpcResponder
 
-conn = MqttConnection("mqtt://broker.hivemq.com:1883")
+conn = MqttConnection("mqtt://mqtt.example.com:1883")
 conn.connect()
 
 def handle(request):
@@ -242,7 +243,7 @@ conn.disconnect()
 ```python
 from luxai.magpie.transport import MqttConnection, MqttRpcRequester
 
-conn = MqttConnection("mqtt://broker.hivemq.com:1883")
+conn = MqttConnection("mqtt://mqtt.example.com:1883")
 conn.connect()
 
 client = MqttRpcRequester(conn, service_name="myservice/actions")
@@ -294,7 +295,7 @@ Video and audio frames are carried over native WebRTC **RTP media tracks** when 
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamWriter, WebRTCOptions
 
 conn = WebRTCConnection.with_mqtt(
-    "mqtt://broker.hivemq.com:1883", session_id="my-node",
+    "mqtt://mqtt.example.com:1883", session_id="my-node",
     options=WebRTCOptions(video_topics=["/camera/color/image"]),
 )
 conn.connect()
@@ -313,7 +314,7 @@ conn.disconnect()
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamReader, WebRTCOptions
 
 conn = WebRTCConnection.with_mqtt(
-    "mqtt://broker.hivemq.com:1883", session_id="my-node",
+    "mqtt://mqtt.example.com:1883", session_id="my-node",
     options=WebRTCOptions(video_topics=["/camera/color/image"]),
 )
 conn.connect()
@@ -342,7 +343,7 @@ No broker in the hot path — the data channel is bidirectional P2P, so no `repl
 ```python
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcResponder
 
-conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="my-node-rpc")
+conn = WebRTCConnection.with_mqtt("mqtt://mqtt.example.com:1883", session_id="my-node-rpc")
 conn.connect()
 
 def handle(request):
@@ -366,7 +367,7 @@ conn.disconnect()
 ```python
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcRequester
 
-conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="my-node-rpc")
+conn = WebRTCConnection.with_mqtt("mqtt://mqtt.example.com:1883", session_id="my-node-rpc")
 conn.connect()
 
 client = WebRTCRpcRequester(conn, service_name="service/actions")
@@ -397,14 +398,14 @@ opts = WebRTCOptions(
     audio_topics=["/mic/audio/stream"],
     use_media_channels=True,
 )
-conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", "my-node", options=opts)
+conn = WebRTCConnection.with_mqtt("mqtt://mqtt.example.com:1883", "my-node", options=opts)
 conn.connect()
 ```
 
 **Auto-reconnect:**
 
 ```python
-conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883",
+conn = WebRTCConnection.with_mqtt("mqtt://mqtt.example.com:1883",
                                    session_id="my-node", reconnect=True)
 ```
 
@@ -576,13 +577,13 @@ server = ZMQRpcResponder("tcp://*:5556", schema=schema)
 # MQTT — service behind NAT
 from luxai.magpie.transport.mqtt import MqttConnection
 from luxai.magpie.transport import MqttRpcResponder
-conn = MqttConnection("mqtt://broker.hivemq.com:1883")
+conn = MqttConnection("mqtt://mqtt.example.com:1883")
 conn.connect()
 server = MqttRpcResponder(conn, service_name="node-01", schema=schema)
 
 # WebRTC — P2P, lowest latency
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcResponder
-conn = WebRTCConnection.with_mqtt("mqtt://broker.hivemq.com:1883", session_id="node-01")
+conn = WebRTCConnection.with_mqtt("mqtt://mqtt.example.com:1883", session_id="node-01")
 conn.connect()
 server = WebRTCRpcResponder(conn, service_name="node-01", schema=schema)
 ```
@@ -639,7 +640,7 @@ For MQTT or WebRTC, just swap the requester — `McpTransport` is identical:
 from luxai.magpie.transport.mqtt import MqttConnection
 from luxai.magpie.transport import MqttRpcRequester
 
-conn = MqttConnection("mqtt://broker.hivemq.com:1883")
+conn = MqttConnection("mqtt://mqtt.example.com:1883")
 conn.connect()
 req = MqttRpcRequester(conn, service_name="node-01")
 
@@ -735,20 +736,20 @@ pip install "luxai-magpie[mqtt]"
 
 **`magpie-write-mqtt`**:
 ```bash
-magpie-write-mqtt mqtt://broker.hivemq.com:1883 /magpie/test '{"x": 1}' --rate 5 --loop
-magpie-write-mqtt mqtt://broker.hivemq.com:1883 /magpie/status '{"state": "ready"}' --retain
+magpie-write-mqtt mqtt://mqtt.example.com:1883 /magpie/test '{"x": 1}' --rate 5 --loop
+magpie-write-mqtt mqtt://mqtt.example.com:1883 /magpie/status '{"state": "ready"}' --retain
 ```
 
 **`magpie-read-mqtt`**:
 ```bash
-magpie-read-mqtt mqtt://broker.hivemq.com:1883 /magpie/test --pretty
-magpie-read-mqtt mqtt://broker.hivemq.com:1883 "/magpie/+" --hz    # wildcard + frequency
+magpie-read-mqtt mqtt://mqtt.example.com:1883 /magpie/test --pretty
+magpie-read-mqtt mqtt://mqtt.example.com:1883 "/magpie/+" --hz    # wildcard + frequency
 ```
 
 **`magpie-request-mqtt`**:
 ```bash
-magpie-request-mqtt mqtt://broker.hivemq.com:1883 myservice/actions '{"action": "run"}' --pretty
-magpie-request-mqtt mqtt://broker.hivemq.com:1883 myservice/actions @req.json --timeout 10
+magpie-request-mqtt mqtt://mqtt.example.com:1883 myservice/actions '{"action": "run"}' --pretty
+magpie-request-mqtt mqtt://mqtt.example.com:1883 myservice/actions @req.json --timeout 10
 ```
 
 > Advanced broker options (auth, TLS, QoS, LWT) can be passed via `--mqtt-params @params.json`.
@@ -765,23 +766,48 @@ Both peers use the same `session_id`. Signaling via `--signaling mqtt://...` (in
 
 **`magpie-write-webrtc` / `magpie-read-webrtc`**:
 ```bash
-magpie-write-webrtc my-node /service/state '{"x": 1.0}' --signaling mqtt://broker.hivemq.com:1883
-magpie-read-webrtc  my-node /service/state --signaling mqtt://broker.hivemq.com:1883 --pretty
+magpie-write-webrtc my-node /service/state '{"x": 1.0}' --signaling mqtt://mqtt.example.com:1883
+magpie-read-webrtc  my-node /service/state --signaling mqtt://mqtt.example.com:1883 --pretty
 ```
 
 **`magpie-request-webrtc`**:
 ```bash
 magpie-request-webrtc my-node service/actions '{"action": "run"}' \
-    --signaling mqtt://broker.hivemq.com:1883 --pretty
+    --signaling mqtt://mqtt.example.com:1883 --pretty
 ```
 
 **Video / Audio over WebRTC**:
 ```bash
-magpie-video-capture-webrtc my-node /camera --signaling mqtt://broker.hivemq.com:1883
-magpie-video-viewer-webrtc  my-node /camera --signaling mqtt://broker.hivemq.com:1883
-magpie-audio-capture-webrtc my-node /audio  --signaling mqtt://broker.hivemq.com:1883
-magpie-audio-player-webrtc  my-node /audio  --signaling mqtt://broker.hivemq.com:1883
+magpie-video-capture-webrtc my-node /camera --signaling mqtt://mqtt.example.com:1883
+magpie-video-viewer-webrtc  my-node /camera --signaling mqtt://mqtt.example.com:1883
+magpie-audio-capture-webrtc my-node /audio  --signaling mqtt://mqtt.example.com:1883
+magpie-audio-player-webrtc  my-node /audio  --signaling mqtt://mqtt.example.com:1883
 ```
+
+---
+
+### SSH Tools
+
+```bash
+pip install "luxai-magpie[mqtt]"
+```
+
+SSH over MQTT — tunnel a full SSH session through any MQTT broker. No port forwarding or public IP required; the machine just needs outbound access to the broker.
+
+**`magpie-ssh-server-mqtt`** — run on the remote machine:
+```bash
+magpie-ssh-server-mqtt mqtt://mqtt.example.com:1883 my-robot
+magpie-ssh-server-mqtt mqtts://mqtt.example.com:8883 my-robot --mqtt-params @/etc/magpie/mqtt.json
+```
+
+**`magpie-ssh-mqtt`** — connect from any client:
+```bash
+magpie-ssh-mqtt mqtt://mqtt.example.com:1883 my-robot            # interactive shell
+magpie-ssh-mqtt mqtt://mqtt.example.com:1883 my-robot ls -l      # run a command
+magpie-ssh-mqtt mqtt://mqtt.example.com:1883 my-robot -l alice   # specify user
+```
+
+> For ProxyCommand mode, VS Code Remote SSH, TLS/auth options, cloud brokers (Ably), and more, see [docs/ssh-mqtt.md](docs/ssh-mqtt.md).
 
 ---
 
@@ -789,7 +815,7 @@ magpie-audio-player-webrtc  my-node /audio  --signaling mqtt://broker.hivemq.com
 
 MAGPIE is built around four abstract base classes — `StreamWriter`, `StreamReader`, `RpcRequester`, `RpcResponder` — that absorb all threading, queuing, and lifecycle complexity. Transport implementations fill in two or three pure transport methods; everything else is handled by the base classes. This makes adding a new transport a matter of minutes, not days, and keeps user code completely transport-agnostic.
 
-For the full architecture diagram, layer-by-layer breakdown, schema and MCP adapter design, and guides for adding new transports, serializers, and frame types, see [ARCHITECTURE.md](ARCHITECTURE.md).
+For the full architecture diagram, layer-by-layer breakdown, schema and MCP adapter design, and guides for adding new transports, serializers, and frame types, see [docs/architecture.md](docs/architecture.md).
 
 ---
 
