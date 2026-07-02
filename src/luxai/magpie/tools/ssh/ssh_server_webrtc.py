@@ -29,7 +29,7 @@ except ImportError:
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.serializer.msgpack_serializer import MsgpackSerializer
 from luxai.magpie.transport.mqtt import MqttConnection
-from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options
+from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options, get_mqtt_protocol_version
 from luxai.magpie.tools._webrtc_tools_common import webrtc_options_type, build_webrtc_options
 from luxai.magpie.tools.ssh._ssh_tools_common import (
     SSH_STREAM_TOPIC_UP, SSH_STREAM_TOPIC_DOWN,
@@ -140,7 +140,7 @@ class WebRtcSshServer:
             return False
 
         opts = build_mqtt_options(self._mqtt_params)
-        self._monitor_conn = MqttConnection(self._signaling_url, options=opts)
+        self._monitor_conn = MqttConnection(self._signaling_url, options=opts, protocol_version=get_mqtt_protocol_version(self._mqtt_params))
         if not self._monitor_conn.connect(timeout=timeout):
             Logger.error(f"[ssh-server-webrtc] cannot connect to signaling broker at {self._signaling_url}")
             return False

@@ -30,7 +30,7 @@ except ImportError:
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.serializer.msgpack_serializer import MsgpackSerializer
 from luxai.magpie.transport import MqttConnection, MqttStreamWriter
-from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options
+from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options, get_mqtt_protocol_version
 from luxai.magpie.tools.ssh._ssh_tools_common import (
     mqtt_up_topic, mqtt_down_topic, mqtt_wildcard_up, extract_session_ulid,
     bridge_socket_to_writer, connect_sshd,
@@ -149,7 +149,7 @@ class MqttSshServer:
         self._lock                = threading.Lock()
 
         opts = build_mqtt_options(mqtt_params)
-        self._conn = MqttConnection(uri, options=opts)
+        self._conn = MqttConnection(uri, options=opts, protocol_version=get_mqtt_protocol_version(mqtt_params))
 
     def start(self, timeout: float = 10.0) -> bool:
         if not self._conn.connect(timeout=timeout):

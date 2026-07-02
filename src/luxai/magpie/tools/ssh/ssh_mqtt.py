@@ -35,7 +35,7 @@ except ImportError:
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.utils.common import get_uinque_id
 from luxai.magpie.transport import MqttConnection, MqttStreamWriter, MqttStreamReader
-from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options
+from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options, get_mqtt_protocol_version
 from luxai.magpie.tools.ssh._ssh_tools_common import (
     mqtt_up_topic, mqtt_down_topic,
     bridge_stdin_to_writer, bridge_reader_to_stdout,
@@ -49,7 +49,7 @@ def _run_proxy(uri: str, node_id: str, mqtt_params: dict | None, timeout: float)
     up   = mqtt_up_topic(node_id, session_ulid)
     down = mqtt_down_topic(node_id, session_ulid)
     opts = build_mqtt_options(mqtt_params)
-    conn = MqttConnection(uri, options=opts)
+    conn = MqttConnection(uri, options=opts, protocol_version=get_mqtt_protocol_version(mqtt_params))
     if not conn.connect(timeout=timeout):
         Logger.error(f"magpie-ssh-mqtt: cannot connect to broker at {uri}")
         sys.exit(1)

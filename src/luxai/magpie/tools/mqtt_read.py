@@ -20,7 +20,7 @@ except ImportError:
 from luxai.magpie.utils import Logger
 from luxai.magpie.nodes import SinkNode
 from luxai.magpie.transport import MqttConnection, MqttStreamReader
-from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options
+from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options, get_mqtt_protocol_version
 
 
 class MqttRead(SinkNode):
@@ -156,7 +156,7 @@ def main():
 
     opts = build_mqtt_options(ns.mqtt_params)
 
-    conn = MqttConnection(ns.uri, options=opts)
+    conn = MqttConnection(ns.uri, options=opts, protocol_version=get_mqtt_protocol_version(ns.mqtt_params))
     if not conn.connect(timeout=ns.timeout):
         Logger.error(f"magpie-read-mqtt: could not connect to broker at {ns.uri}")
         return 1

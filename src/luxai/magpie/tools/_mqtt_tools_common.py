@@ -54,6 +54,25 @@ def mqtt_params_type(raw: str) -> dict:
     return data
 
 
+def get_mqtt_protocol_version(d: Optional[dict]) -> int:
+    """
+    Extract the MQTT protocol version from a parsed ``--mqtt-params`` dict.
+
+    Reads the optional top-level ``"protocol_version"`` key.  Valid values:
+
+    * ``5``   — MQTTv5 (default)
+    * ``3`` or ``311`` — MQTTv3.1.1 (required by brokers like Ably)
+    """
+    if not d:
+        return 5
+    version = d.get("protocol_version", 5)
+    if version not in (3, 5, 311):
+        raise ValueError(
+            f"Invalid protocol_version {version!r}: use 3 (or 311) for MQTTv3.1.1, or 5 for MQTTv5"
+        )
+    return version
+
+
 def build_mqtt_options(d: Optional[dict]) -> MqttOptions:
     """
     Convert a parsed ``--mqtt-params`` dict into an ``MqttOptions`` instance.

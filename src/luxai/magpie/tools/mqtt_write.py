@@ -21,7 +21,7 @@ from luxai.magpie.utils.logger import Logger
 from luxai.magpie.nodes.source_node import SourceNode
 from luxai.magpie.transport import MqttConnection, MqttStreamWriter
 from luxai.magpie.frames import DictFrame
-from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options
+from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options, get_mqtt_protocol_version
 
 
 def _parse_payload(raw: str) -> Any:
@@ -204,7 +204,7 @@ def main():
     if args.retain:
         opts.defaults.publish_retain = True
 
-    conn = MqttConnection(args.uri, options=opts)
+    conn = MqttConnection(args.uri, options=opts, protocol_version=get_mqtt_protocol_version(args.mqtt_params))
     if not conn.connect(timeout=args.timeout):
         Logger.error(f"magpie-write-mqtt: could not connect to broker at {args.uri}")
         return 1

@@ -18,7 +18,7 @@ except ImportError:
 
 from luxai.magpie.transport import MqttConnection, MqttRpcRequester
 from luxai.magpie.utils import Logger
-from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options
+from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options, get_mqtt_protocol_version
 
 
 def _parse_payload(raw: str) -> Dict[str, Any]:
@@ -142,7 +142,7 @@ def main() -> int:
     client: Optional[MqttRpcRequester] = None
 
     try:
-        conn = MqttConnection(ns.uri, options=opts)
+        conn = MqttConnection(ns.uri, options=opts, protocol_version=get_mqtt_protocol_version(ns.mqtt_params))
         if not conn.connect(timeout=ns.connect_timeout):
             Logger.error(f"magpie-request-mqtt: could not connect to broker at {ns.uri}")
             return 1

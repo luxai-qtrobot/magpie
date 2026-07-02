@@ -140,13 +140,14 @@ def build_signaler(signaling_url: str, session_id: str,
 
     if scheme in ("mqtt", "mqtts", "ws", "wss"):
         try:
-            from luxai.magpie.tools._mqtt_tools_common import build_mqtt_options  # noqa: PLC0415
+            from luxai.magpie.tools._mqtt_tools_common import build_mqtt_options, get_mqtt_protocol_version  # noqa: PLC0415
             mqtt_options = build_mqtt_options(mqtt_params)
             signaler = MqttSignaler(
                 signaling_url, session_id,
                 client_id=client_id,
                 timeout=timeout,
                 options=mqtt_options,
+                protocol_version=get_mqtt_protocol_version(mqtt_params),
             )
         except ImportError:
             Logger.error(

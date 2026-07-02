@@ -96,6 +96,7 @@ class MqttSignaler(WebRtcSignaler):
         client_id: Optional[str] = None,
         timeout: float = 10.0,
         options=None,
+        protocol_version: int = 5,
     ):
         """
         Args:
@@ -121,7 +122,7 @@ class MqttSignaler(WebRtcSignaler):
         self._topic = f"magpie/webrtc/{session_id}/signal"
         self._callback: Optional[Callable[[bytes], None]] = None
 
-        self._conn = MqttConnection(broker_url, client_id=client_id, options=options)
+        self._conn = MqttConnection(broker_url, client_id=client_id, options=options, protocol_version=protocol_version)
         if not self._conn.connect(timeout=timeout):
             raise ConnectionError(
                 f"MqttSignaler: could not connect to MQTT broker '{broker_url}'"
