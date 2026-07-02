@@ -2,9 +2,9 @@
 """
 magpie-ssh-server-mqtt — accept SSH tunnel connections over MQTT.
 
-Subscribes to  magpie/ssh/<node_id>/+/up  and, for every new session ULID
-that appears, opens a TCP connection to the local sshd and bridges bytes
-bidirectionally.
+Listens on  magpie/ssh/<node_id>/rpc/req  for session requests using Magpie's
+RPC protocol. For each session, subscribes to the specific up topic and bridges
+magpie/ssh/<node_id>/<ulid>/up  ↔  local sshd.
 
 Usage:
     magpie-ssh-server-mqtt mqtt://broker:1883 my-node
@@ -29,10 +29,11 @@ except ImportError:
 
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.serializer.msgpack_serializer import MsgpackSerializer
-from luxai.magpie.transport import MqttConnection, MqttStreamWriter
+from luxai.magpie.transport import MqttConnection, MqttStreamWriter, MqttRpcResponder
+from luxai.magpie.nodes import ServerNode
 from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options, get_mqtt_protocol_version
 from luxai.magpie.tools.ssh._ssh_tools_common import (
-    mqtt_up_topic, mqtt_down_topic, mqtt_wildcard_up, extract_session_ulid,
+    mqtt_up_topic, mqtt_down_topic,
     bridge_socket_to_writer, connect_sshd,
 )
 
@@ -58,12 +59,7 @@ def _bridge_queue_to_socket(q: Queue, sock, stop_event: threading.Event) -> None
 
 
 class _SshSession:
-    """
-    One SSH tunnel session: per-session Queue ↔ local sshd socket.
-
-    The Queue is populated by MqttSshServer's wildcard callback so that
-    no chunks are ever lost between session detection and subscription setup.
-    """
+    """One SSH tunnel session: per-session Queue ↔ local sshd socket."""
 
     def __init__(self, session_ulid: str, data_queue: Queue,
                  conn: MqttConnection, node_id: str,
@@ -130,11 +126,11 @@ class _SshSession:
 
 class MqttSshServer:
     """
-    Listens for new MQTT SSH sessions via a single wildcard subscription.
+    Accepts SSH tunnel sessions via Magpie RPC on magpie/ssh/<node_id>/rpc/req.
 
-    ALL chunks (including the very first one) are routed into per-session
-    Queues inside the wildcard callback, so no data is ever lost during
-    the session-spawn window.
+    Each session request carries a unique ULID. The handler subscribes to the
+    specific up topic, connects to sshd, and returns "ready" — all before the
+    RPC response is sent, so the client can trust the tunnel is fully set up.
     """
 
     def __init__(self, uri: str, node_id: str,
@@ -144,66 +140,65 @@ class MqttSshServer:
         self._sshd_host = sshd_host
         self._sshd_port = sshd_port
 
-        self._sessions: dict      = {}
-        self._session_queues: dict = {}
-        self._lock                = threading.Lock()
+        self._sessions: dict          = {}
+        self._session_queues: dict    = {}
+        self._session_callbacks: dict = {}
+        self._lock                    = threading.Lock()
 
         opts = build_mqtt_options(mqtt_params)
         self._conn = MqttConnection(uri, options=opts, protocol_version=get_mqtt_protocol_version(mqtt_params))
 
-    def start(self, timeout: float = 10.0) -> bool:
+    def start(self, timeout: float = 10.0) -> "MqttRpcResponder | None":
         if not self._conn.connect(timeout=timeout):
             Logger.error(f"[ssh-server-mqtt] cannot connect to broker at {self._uri}")
-            return False
+            return None
 
-        wildcard = mqtt_wildcard_up(self._node_id)
-        self._conn.add_subscription(wildcard, self._on_message)
+        service = f"magpie/ssh/{self._node_id}"
+        responder = MqttRpcResponder(self._conn, service_name=service)
         Logger.info(f"[ssh-server-mqtt] ready — node={self._node_id}  broker={self._uri}")
-        Logger.info(f"[ssh-server-mqtt] listening on {wildcard}")
-        return True
+        Logger.info(f"[ssh-server-mqtt] listening on {service}/rpc/req")
+        return responder
 
-    def _on_message(self, payload_bytes: bytes, topic: str) -> None:
-        ulid = extract_session_ulid(topic, self._node_id)
+    def on_session_request(self, request: dict) -> dict:
+        """RPC handler — runs in a ServerNode worker thread per session."""
+        ulid = request.get("session_id") if isinstance(request, dict) else None
         if not ulid:
-            return
-
-        try:
-            data = _serializer.deserialize(payload_bytes)
-        except Exception:
-            data = payload_bytes
-
-        with self._lock:
-            if ulid in self._session_queues:
-                # Existing session — route directly into its queue
-                self._session_queues[ulid].put(data)
-                return
-
-            # New session — create queue and put first chunk in before spawning
-            q = Queue()
-            q.put(data)
-            self._session_queues[ulid] = q
+            Logger.warning("[ssh-server-mqtt] invalid session request: missing session_id")
+            return {"status": "error", "reason": "missing session_id"}
 
         Logger.info(f"[ssh-server-mqtt] new session {ulid}")
-        threading.Thread(
-            target=self._spawn_session,
-            args=(ulid,),
-            daemon=True,
-            name=f"ssh-mqtt-spawn-{ulid[:8]}",
-        ).start()
 
-    def _spawn_session(self, ulid: str) -> None:
+        q  = Queue()
+        up = mqtt_up_topic(self._node_id, ulid)
+
+        def _on_up(payload_bytes: bytes, t: str, _ulid=ulid) -> None:
+            try:
+                data = _serializer.deserialize(payload_bytes)
+            except Exception:
+                data = payload_bytes
+            with self._lock:
+                if _ulid in self._session_queues:
+                    self._session_queues[_ulid].put(data)
+
         with self._lock:
-            q = self._session_queues[ulid]
+            self._session_queues[ulid]    = q
+            self._session_callbacks[ulid] = _on_up
+        self._conn.add_subscription(up, _on_up)
 
         session = _SshSession(ulid, q, self._conn, self._node_id,
                               self._sshd_host, self._sshd_port)
         if not session.start():
             with self._lock:
                 self._session_queues.pop(ulid, None)
-            return
+                self._session_callbacks.pop(ulid, None)
+            self._conn.remove_subscription(up, _on_up)
+            return {"status": "error",
+                    "reason": f"cannot reach sshd at {self._sshd_host}:{self._sshd_port}"}
 
         with self._lock:
             self._sessions[ulid] = session
+
+        return {"status": "ready"}
 
     def reap_dead_sessions(self) -> None:
         with self._lock:
@@ -213,6 +208,9 @@ class MqttSshServer:
             with self._lock:
                 self._sessions.pop(u, None)
                 self._session_queues.pop(u, None)
+                cb = self._session_callbacks.pop(u, None)
+            if cb:
+                self._conn.remove_subscription(mqtt_up_topic(self._node_id, u), cb)
 
     def stop(self) -> None:
         with self._lock:
@@ -254,8 +252,15 @@ def main():
         sshd_port=args.sshd_port,
     )
 
-    if not server.start(timeout=args.timeout):
+    responder = server.start(timeout=args.timeout)
+    if responder is None:
         sys.exit(1)
+
+    server_node = ServerNode(
+        responder=responder,
+        handler=server.on_session_request,
+        name="ssh-server-mqtt",
+    )
 
     try:
         while True:
@@ -264,6 +269,7 @@ def main():
     except KeyboardInterrupt:
         Logger.info("[ssh-server-mqtt] shutting down...")
     finally:
+        server_node.terminate()
         server.stop()
 
 

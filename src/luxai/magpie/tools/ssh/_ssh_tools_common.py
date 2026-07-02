@@ -26,6 +26,7 @@ def mqtt_wildcard_up(node_id: str) -> str:
     return f"{SSH_TOPIC_PREFIX}/{node_id}/+/up"
 
 
+
 def extract_session_ulid(topic: str, node_id: str) -> Optional[str]:
     """Extract session ULID from a full magpie/ssh/<node_id>/<ulid>/up topic."""
     prefix = f"{SSH_TOPIC_PREFIX}/{node_id}/"

@@ -34,7 +34,7 @@ except ImportError:
 
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.utils.common import get_uinque_id
-from luxai.magpie.transport import MqttConnection, MqttStreamWriter, MqttStreamReader
+from luxai.magpie.transport import MqttConnection, MqttStreamWriter, MqttStreamReader, MqttRpcRequester
 from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type, build_mqtt_options, get_mqtt_protocol_version
 from luxai.magpie.tools.ssh._ssh_tools_common import (
     mqtt_up_topic, mqtt_down_topic,
@@ -48,15 +48,39 @@ def _run_proxy(uri: str, node_id: str, mqtt_params: dict | None, timeout: float)
     session_ulid = get_uinque_id()
     up   = mqtt_up_topic(node_id, session_ulid)
     down = mqtt_down_topic(node_id, session_ulid)
+
     opts = build_mqtt_options(mqtt_params)
     conn = MqttConnection(uri, options=opts, protocol_version=get_mqtt_protocol_version(mqtt_params))
     if not conn.connect(timeout=timeout):
         Logger.error(f"magpie-ssh-mqtt: cannot connect to broker at {uri}")
         sys.exit(1)
 
-    # queue_size=0 → no drop-oldest queue, safe for binary SSH data
     writer = MqttStreamWriter(conn, queue_size=0)
     reader = MqttStreamReader(conn, topic=down, queue_size=0)
+
+    requester = MqttRpcRequester(conn, service_name=f"magpie/ssh/{node_id}", ack_timeout=timeout / 2)
+    resp = None
+    try:
+        resp = requester.call({"session_id": session_ulid}, timeout=timeout)
+    except TimeoutError:
+        Logger.error("magpie-ssh-mqtt: no response from server — is magpie-ssh-server-mqtt running?")
+    finally:
+        requester.close()
+
+    if resp is None:
+        reader.close()
+        writer.close()
+        conn.disconnect()
+        sys.exit(1)
+
+    if isinstance(resp, dict) and resp.get("status") != "ready":
+        Logger.error(f"magpie-ssh-mqtt: server rejected session: {resp.get('reason', 'unknown')}")
+        reader.close()
+        writer.close()
+        conn.disconnect()
+        sys.exit(1)
+
+    Logger.debug(f"magpie-ssh-mqtt: session {session_ulid} ready, bridging SSH...")
 
     stop = threading.Event()
 
