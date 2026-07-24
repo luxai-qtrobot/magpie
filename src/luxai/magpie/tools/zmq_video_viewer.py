@@ -46,14 +46,17 @@ class ZmqVideoViewer(SinkNode):
             Logger.warning(f"{self.name} failed to deserialize frame: {e}")
             return
 
-        # Accept only the image frame types we know how to render
-        if isinstance(frame, ImageFrameRaw):
-            image = np.frombuffer(frame.data, np.uint8).reshape(frame.height, frame.width, frame.channels)
-        elif isinstance(frame, ImageFrameCV):
-            image = frame.to_cv_image()
-        elif isinstance(frame, ImageFrameJpeg):
+        # Accept only the image frame types we know how to render.
+        # Check the more specific subclasses before the generic ImageFrameRaw
+        # fallback, since ImageFrameJpeg/ImageFrameCV are themselves ImageFrameRaw
+        # subclasses and would otherwise always match the raw-pixel branch first.
+        if isinstance(frame, ImageFrameJpeg):
             # Decode to BGR so OpenCV can display it directly
             image = frame.to_np_image(pixel_format="BGR")
+        elif isinstance(frame, ImageFrameCV):
+            image = frame.to_cv_image()
+        elif isinstance(frame, ImageFrameRaw):
+            image = np.frombuffer(frame.data, np.uint8).reshape(frame.height, frame.width, frame.channels)
         else:
             Logger.warning(f"{self.name} received unsupported frame type: {getattr(frame, 'name', type(frame).__name__)}")
             return
