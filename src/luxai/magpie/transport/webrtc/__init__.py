@@ -1,5 +1,6 @@
 from .webrtc_options import WebRTCOptions, WebRTCTurnServer
 from .webrtc_signaler import WebRtcSignaler, MqttSignaler, ZmqSignaler
+from .http_signaler import HttpSignaler
 from .webrtc_connection import WebRTCConnection
 from .webrtc_stream_writer import WebRtcStreamWriter
 from .webrtc_stream_reader import WebRtcStreamReader
@@ -12,6 +13,7 @@ __all__ = [
     "WebRtcSignaler",
     "MqttSignaler",
     "ZmqSignaler",
+    "HttpSignaler",
     "WebRTCConnection",
     "WebRtcStreamWriter",
     "WebRtcStreamReader",

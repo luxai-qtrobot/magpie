@@ -34,6 +34,7 @@ from luxai.magpie.utils import Logger
 
 
 SESSION_ID   = "webrtc-multi"
+HTTP_SIGNAL_URL = "http://127.0.0.1:8000/signal"  # example HTTP relay
 COLOR_TOPIC  = "/camera/color/image"
 DEPTH_TOPIC  = "/camera/depth/image"
 AUDIO_TOPIC  = "/mic/audio/stream"
@@ -55,6 +56,19 @@ if __name__ == "__main__":
             audio_topics=[AUDIO_TOPIC],
         )
     )
+
+    # HTTP signaling: start http_signaling_server.py and configure the reader
+    # with the same URL, session ID, and media topics. Comment out the ZMQ
+    # block above and uncomment this one:
+    # conn = WebRTCConnection.with_http(
+    #     HTTP_SIGNAL_URL, SESSION_ID,
+    #     reconnect=True,
+    #     options=WebRTCOptions(
+    #         stun_servers=[],
+    #         video_topics=[COLOR_TOPIC, DEPTH_TOPIC],
+    #         audio_topics=[AUDIO_TOPIC],
+    #     ),
+    # )
 
     if not conn.connect():
         raise SystemExit("WebRTC handshake timed out.")

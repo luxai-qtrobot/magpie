@@ -10,6 +10,8 @@ Built-in implementations
                       (``pip install luxai-magpie[mqtt]``).
 * ``ZmqSignaler``   — ZMQ PAIR socket; needs ``pyzmq``
                       (bundled with the base magpie install).
+* ``HttpSignaler``  — HTTP mailbox relay; needs ``httpx``
+                      (included in ``luxai-magpie[webrtc]``).
 """
 
 import queue

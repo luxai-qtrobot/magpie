@@ -5,9 +5,9 @@ Captures microphone audio and streams it over a native WebRTC RTP audio track (O
 The topic must be declared in ``WebRTCOptions.audio_topics`` so both sides
 pre-negotiate the RTP transceiver in the SDP offer/answer.
 
-Usage (run together with webrtc_audio_subscriber.py):
-    Terminal 1 (robot):    python examples/webrtc_audio_publisher.py
-    Terminal 2 (operator): python examples/webrtc_audio_subscriber.py
+Usage (run together with webrtc_audio_reader.py):
+    Terminal 1 (robot):    python examples/webrtc/webrtc_audio_writer.py
+    Terminal 2 (operator): python examples/webrtc/webrtc_audio_reader.py
 
 Requirements: luxai-magpie[webrtc,audio]
 """
@@ -22,6 +22,7 @@ from luxai.magpie.utils import Logger
 
 
 SESSION_ID  = "magpie/examples/webrtc-audio"
+HTTP_SIGNAL_URL = "http://127.0.0.1:8000/signal"  # example HTTP relay
 AUDIO_TOPIC = "/mic/audio/stream"
 SAMPLE_RATE = 48000
 CHANNELS    = 1
@@ -41,6 +42,14 @@ if __name__ == "__main__":
             audio_topics=[AUDIO_TOPIC],
         )
     )
+
+    # HTTP signaling: start http_signaling_server.py and switch both peers.
+    # Comment out the with_zmq() block above and uncomment this block:
+    # conn = WebRTCConnection.with_http(
+    #     HTTP_SIGNAL_URL, SESSION_ID,
+    #     reconnect=True,
+    #     options=WebRTCOptions(stun_servers=[], audio_topics=[AUDIO_TOPIC]),
+    # )
 
     if not conn.connect():
         raise SystemExit("WebRTC handshake timed out.")

@@ -8,8 +8,7 @@ Architecture overview
 * A single ``asyncio`` event loop runs in a dedicated background thread;
   all aiortc operations live there.
 * Signaling (SDP offer/answer + ICE candidates) is exchanged via a
-  ``WebRtcSignaler`` — use ``MqttSignaler`` for internet connectivity or
-  ``ZmqSignaler`` for broker-less LAN signaling.
+  ``WebRtcSignaler`` — use MQTT, ZMQ, or an HTTP mailbox relay.
 * Role (offer vs answer) is auto-negotiated: both peers broadcast a
   ``hello`` message; the peer with the lexicographically higher ``peer_id``
   creates the SDP offer.
@@ -25,7 +24,7 @@ Architecture overview
 import asyncio
 import threading
 from queue import Queue
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Mapping, Optional
 
 from luxai.magpie.serializer.msgpack_serializer import MsgpackSerializer
 from luxai.magpie.utils.logger import Logger
@@ -329,12 +328,20 @@ class WebRTCConnection:
         import time as _time
         deadline = _time.monotonic() + timeout if timeout is not None else None
         connected = False
-        while not connected:
-            connected = self._connect_event.wait(timeout=0.5)
-            if connected:
-                break
-            if deadline is not None and _time.monotonic() >= deadline:
-                break
+        try:
+            while not connected:
+                connected = self._connect_event.wait(timeout=0.5)
+                if connected:
+                    break
+                if deadline is not None and _time.monotonic() >= deadline:
+                    break
+        except KeyboardInterrupt:
+            try:
+                self.disconnect()
+            except Exception:
+                # Still release the relay slot if peer-connection cleanup fails.
+                self._signaler.disconnect()
+            raise
         if not connected:
             Logger.warning(
                 f"WebRTCConnection({self._peer_id}): "
@@ -426,6 +433,45 @@ class WebRTCConnection:
         if options is None:
             options = WebRTCOptions(stun_servers=[])
         return cls(signaler=signaler, reconnect=reconnect, options=options)
+
+    @classmethod
+    def with_http(
+        cls,
+        base_url: str,
+        session_id: str,
+        *,
+        participant_id: Optional[str] = None,
+        headers: Optional[Mapping[str, str]] = None,
+        headers_provider: Optional[Callable[[], Mapping[str, str]]] = None,
+        http_client=None,
+        poll_wait: float = 20.0,
+        request_timeout: float = 10.0,
+        reconnect: bool = False,
+        options: Optional[WebRTCOptions] = None,
+    ) -> "WebRTCConnection":
+        """Create a connection through a generic HTTP long-poll relay.
+
+        The relay only forwards opaque signaling bytes and requires no MAGPIE
+        dependency. ``headers`` and ``headers_provider`` are applied to every
+        HTTP request; a supplied ``http_client`` remains caller-owned.
+        """
+        from .http_signaler import HttpSignaler  # noqa: PLC0415
+
+        signaler = HttpSignaler(
+            base_url,
+            session_id,
+            participant_id=participant_id,
+            headers=headers,
+            headers_provider=headers_provider,
+            http_client=http_client,
+            poll_wait=poll_wait,
+            request_timeout=request_timeout,
+        )
+        try:
+            return cls(signaler=signaler, reconnect=reconnect, options=options)
+        except Exception:
+            signaler.disconnect()
+            raise
 
     # ------------------------------------------------------------------
     # Registration API (used by writer / reader / rpc classes)

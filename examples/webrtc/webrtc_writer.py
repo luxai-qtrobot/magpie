@@ -1,13 +1,12 @@
 """
 WebRTC Writer example.
 
-Streams sensor data from robot to operator over the internet using a WebRTC
-data channel.  MQTT is used only for the initial signaling handshake (SDP +
-ICE exchange); all payload traffic flows P2P via WebRTC.
+Streams sensor data from robot to operator over a WebRTC data channel.
+ZMQ, MQTT, or HTTP can carry the signaling handshake; payloads flow over WebRTC.
 
 Usage (run together with webrtc_reader.py):
-    Terminal 1 (robot):    python examples/webrtc_writer.py
-    Terminal 2 (operator): python examples/webrtc_reader.py
+    Terminal 1 (robot):    python examples/webrtc/webrtc_writer.py
+    Terminal 2 (operator): python examples/webrtc/webrtc_reader.py
 
 TIP: Change SESSION_ID to something unique to avoid collisions with other
      users sharing the same public broker.
@@ -20,6 +19,7 @@ from luxai.magpie.utils import Logger
 
 
 BROKER_URI = "mqtt://broker.hivemq.com:1883"  # MQTT broker used only for signaling
+HTTP_SIGNAL_URL = "http://127.0.0.1:8000/signal"  # example HTTP relay
 SESSION_ID = "magpie/examples/webrtc"         # shared rendezvous name — must match reader
 TOPIC      = "robot/state"                    # topic to publish data on
 
@@ -39,6 +39,14 @@ if __name__ == "__main__":
     )
 
     # conn = WebRTCConnection.with_mqtt(BROKER_URI, SESSION_ID)
+
+    # HTTP signaling: start http_signaling_server.py, then use this on both peers.
+    # Comment out the with_zmq() block above and uncomment this block:
+    # conn = WebRTCConnection.with_http(
+    #     HTTP_SIGNAL_URL, SESSION_ID,
+    #     reconnect=True,
+    #     options=WebRTCOptions(stun_servers=[]),  # localhost demo
+    # )
 
     # optional WebRTC connection options:
     # from luxai.magpie.transport.webrtc import WebRTCOptions, WebRTCTurnServer

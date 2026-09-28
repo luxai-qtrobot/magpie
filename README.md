@@ -41,6 +41,7 @@ Whether the wire is ZeroMQ, MQTT, WebRTC, or something entirely custom, the appl
   - [WebRTC Streaming](#webrtc-streaming)
   - [WebRTC Request / Response RPC](#webrtc-request--response-rpc)
   - [WebRTC Advanced Options](#webrtc-advanced-options)
+  - [WebRTC HTTP Signaling](#webrtc-http-signaling)
   - [Schema-based RPC](#schema-based-rpc)
   - [MCP Integration](#mcp-integration)
   - [Network Discovery](#network-discovery)
@@ -63,7 +64,7 @@ Whether the wire is ZeroMQ, MQTT, WebRTC, or something entirely custom, the appl
 - **Schema-based RPC** — JSON-RPC 2.0 dispatch via `JsonRpcSchema`; define your API once, call methods by name with the proxy interface (`client.add(a=3, b=4)`)
 - **MCP support out of the box** — `McpSchema` turns any MAGPIE RPC responder into a fully compliant MCP tool server (`initialize`, `tools/list`, `tools/call`); `McpTransport` lets any FastMCP `Client` call those tools over ZMQ, MQTT, or WebRTC
 - **MQTT transport** — full streaming and RPC over MQTT; shared connection; supports `mqtt://`, `mqtts://`, `ws://`, `wss://`, TLS, auth, LWT, and auto-reconnect
-- **WebRTC transport** — P2P streaming, video/audio, and RPC over WebRTC; MQTT or ZMQ used only for the initial signaling handshake; STUN + optional TURN for NAT traversal
+- **WebRTC transport** — P2P streaming, video/audio, and RPC over WebRTC; MQTT, ZMQ, or HTTP used for signaling; STUN + optional TURN for NAT traversal
 - **Typed frames** — `ImageFrameJpeg`, `ImageFrameCV`, `AudioFrameRaw`, `AudioFrameFlac`, and more; automatic serialization/deserialization across all transports
 - **Node helpers** — `SourceNode`, `SinkNode`, `ProcessNode`, `ServerNode` add lifecycle and thread management on top of the raw transport primitives
 - **Network discovery** — mDNS/Zeroconf node advertisement and scanning via `ZconfDiscovery`
@@ -85,7 +86,8 @@ pip install luxai-magpie
 | Extra | What it adds |
 |---|---|
 | `pip install "luxai-magpie[mqtt]"` | MQTT transport + MQTT CLI tools |
-| `pip install "luxai-magpie[webrtc]"` | WebRTC transport — P2P streaming, video/audio, RPC over internet |
+| `pip install "luxai-magpie[webrtc]"` | WebRTC transport with ZMQ and HTTP signaling; add `[mqtt]` for MQTT signaling |
+| `pip install "luxai-magpie[webrtc-http]"` | Compatibility alias for the WebRTC extra |
 | `pip install "luxai-magpie[mcp]"` | MCP adapter — `McpTransport` for FastMCP `Client` |
 | `pip install "luxai-magpie[audio]"` | Audio frames + capture/player CLI tools |
 | `pip install "luxai-magpie[video]"` | Image frames + capture/viewer CLI tools |
@@ -285,7 +287,7 @@ conn.connect()
 
 ### WebRTC Streaming
 
-WebRTC enables **P2P communication over the internet** — no broker in the data path after the initial signaling handshake. Signaling is exchanged via MQTT (internet) or ZMQ (LAN).
+WebRTC enables **P2P communication over the internet** — no broker in the data path after the initial signaling handshake. Signaling is exchanged via MQTT, ZMQ, or an HTTP relay.
 
 Video and audio frames are carried over native WebRTC **RTP media tracks** when topics are declared in `WebRTCOptions`; all other data flows over the data channel.
 
@@ -408,6 +410,49 @@ conn.connect()
 conn = WebRTCConnection.with_mqtt("mqtt://mqtt.example.com:1883",
                                    session_id="my-node", reconnect=True)
 ```
+
+---
+
+### WebRTC HTTP Signaling
+
+HTTP signaling uses the same two-peer `hello`, SDP, and ICE exchange as MQTT. Each peer POSTs outgoing messages and long-polls its inbox. The relay routes opaque bytes and does **not** import MAGPIE or parse SDP. Media, streams, and RPC still flow over WebRTC after negotiation.
+
+The server example needs FastAPI and Uvicorn, but does not need MAGPIE. Run it from the repository root:
+
+```bash
+pip install fastapi uvicorn
+python examples/webrtc/http_signaling_server.py
+```
+
+Install the WebRTC extra, which includes the HTTP client. In both `examples/webrtc/webrtc_reader.py` and `examples/webrtc/webrtc_writer.py`, comment out the active `with_zmq(...)` block and uncomment the `with_http(...)` block. Then run the peers in separate terminals:
+
+```bash
+pip install "luxai-magpie[webrtc]"
+python examples/webrtc/webrtc_reader.py
+python examples/webrtc/webrtc_writer.py
+```
+
+The audio, video, and multimedia WebRTC examples also include commented HTTP signaling options. Set the same signal URL and session ID on both peers. The example `stun_servers=[]` setting is for local peers; configure STUN or TURN as needed across networks.
+
+If joining reports `409 Conflict`, that session already has two participants. Stop any old peers; after an abrupt exit, restart the example server or wait up to 90 seconds for the stale slot to expire.
+
+For an authenticated application server, pass fixed headers and a provider for refreshed credentials. The provider runs before **every** HTTP request. An optional `http_client` can supply custom HTTP behavior; MAGPIE borrows it, so the caller closes it.
+
+```python
+from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCOptions
+
+conn = WebRTCConnection.with_http(
+    "https://example.com/webrtc/signal",
+    session_id="robot-session-42",
+    headers={"X-Tenant": "my-team"},
+    headers_provider=lambda: {"Authorization": f"Bearer {get_current_token()}"},
+    options=WebRTCOptions(video_topics=["/camera/color/image"]),
+    reconnect=True,
+)
+conn.connect(timeout=30)
+```
+
+The [server helper and wire contract](docs/webrtc-http-signaling.md) can be copied into an existing ASGI or WSGI application without installing MAGPIE on the server. The included in-memory mailbox is for one process; a scaled deployment needs shared storage and the application's own authentication.
 
 ---
 
