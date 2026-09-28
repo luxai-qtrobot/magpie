@@ -92,7 +92,7 @@ pip install luxai-magpie
 | `pip install "luxai-magpie[audio]"` | Audio frames + capture/player CLI tools |
 | `pip install "luxai-magpie[video]"` | Image frames + capture/viewer CLI tools |
 | `pip install "luxai-magpie[discovery]"` | `magpie-discovery` CLI tool |
-| `pip install "luxai-magpie[full]"` | All of the above |
+| `pip install "luxai-magpie[full]"` | All optional extras except MCP |
 
 ---
 
