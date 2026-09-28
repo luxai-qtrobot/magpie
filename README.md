@@ -809,7 +809,9 @@ magpie-request-mqtt mqtt://mqtt.example.com:1883 myservice/actions @req.json --t
 pip install "luxai-magpie[webrtc,mqtt]"
 ```
 
-Both peers use the same `session_id`. Signaling via `--signaling mqtt://...` (internet) or `--signaling tcp://...` (LAN, add `--bind` on one side).
+Both peers use the same `session_id`. Use `--signaling mqtt://...`, `--signaling http://...` or `https://...` for an HTTP relay, or `--signaling tcp://...` for ZMQ (add `--bind` on one side). MQTT signaling needs the separate `[mqtt]` extra.
+
+For an HTTP relay, pass its base URL, including the mounted `/signal` prefix. All seven WebRTC tools accept fixed authentication headers through `--http-headers '{"Authorization":"Bearer TOKEN"}'` or `--http-headers @headers.json`. See [HTTP signaling](docs/webrtc-http-signaling.md) for the relay setup.
 
 **`magpie-write-webrtc` / `magpie-read-webrtc`**:
 ```bash

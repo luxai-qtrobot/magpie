@@ -24,6 +24,9 @@ from luxai.magpie.transport.webrtc import (  # noqa: E402
     WebRTCRpcRequester,
     WebRTCRpcResponder,
 )
+from luxai.magpie.tools._webrtc_tools_common import (  # noqa: E402
+    build_signaler, http_headers_type,
+)
 
 
 @pytest.fixture
@@ -60,6 +63,21 @@ def _auth():
 
 def _segment(value):
     return base64.urlsafe_b64encode(value.encode()).decode().rstrip("=")
+
+
+def test_cli_http_signaling_with_auth_headers(relay, tmp_path):
+    headers_file = tmp_path / "headers.json"
+    headers_file.write_text('{"Authorization":"Bearer test-token"}', encoding="utf-8")
+    headers = http_headers_type(f"@{headers_file}")
+    first = build_signaler(relay, "cli-room", timeout=2, http_headers=headers)
+    second = build_signaler(relay, "cli-room", timeout=2, http_headers=headers)
+    try:
+        assert isinstance(first, HttpSignaler)
+        assert isinstance(second, HttpSignaler)
+        assert first.participant_id != second.participant_id
+    finally:
+        first.disconnect()
+        second.disconnect()
 
 
 def test_asgi_adapter_exposes_complete_protocol():

@@ -45,6 +45,27 @@ def webrtc_options_type(raw: str) -> dict:
     return data
 
 
+def http_headers_type(raw: str) -> dict:
+    """Parse fixed HTTP signaling headers from JSON or an ``@file``."""
+    raw = raw.strip()
+    try:
+        if raw.startswith("@"):
+            with open(raw[1:].strip(), "r", encoding="utf-8") as f:
+                headers = json.load(f)
+        else:
+            headers = json.loads(raw)
+    except (OSError, json.JSONDecodeError) as e:
+        raise argparse.ArgumentTypeError(f"invalid --http-headers: {e}") from e
+    if not isinstance(headers, dict) or not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in headers.items()
+    ):
+        raise argparse.ArgumentTypeError(
+            "--http-headers must be a JSON object of string header names and values"
+        )
+    return headers
+
+
 def build_webrtc_options(d: Optional[dict], signaling_url: str = ""):
     """
     Convert a parsed ``--webrtc-options`` dict into a ``WebRTCOptions`` instance.
@@ -115,22 +136,26 @@ def build_webrtc_options(d: Optional[dict], signaling_url: str = ""):
 
 def build_signaler(signaling_url: str, session_id: str,
                    client_id: str = None, timeout: float = 10.0,
-                   bind: bool = False, mqtt_params: dict = None):
+                   bind: bool = False, mqtt_params: dict = None,
+                   http_headers: dict = None):
     """
     Parse *signaling_url* and return a connected :class:`WebRtcSignaler`.
 
     Supported schemes:
       ``mqtt://``  ``mqtts://``  — MQTT broker  (requires ``luxai-magpie[mqtt]``)
+      ``http://`` ``https://``   — HTTP signaling relay
       ``tcp://``                 — ZMQ PAIR socket  (included in base install)
 
     Args:
         signaling_url: Signaling URL, e.g. ``mqtt://127.0.0.1:1883``
-                       or ``tcp://192.168.1.10:5555``.
+                       ``https://signal.example.com/signal``, or
+                       ``tcp://192.168.1.10:5555``.
         session_id:    Shared rendezvous name.
-        client_id:     Optional MQTT client ID (ignored for ZMQ).
-        timeout:       MQTT broker connection timeout in seconds (ignored for ZMQ).
+        client_id:     Optional MQTT client ID (ignored for HTTP and ZMQ).
+        timeout:       MQTT connection or HTTP request timeout (ignored for ZMQ).
         bind:          For ZMQ: ``True`` to bind the socket (server side).
         mqtt_params:   Parsed ``--mqtt-params`` dict for auth/TLS options (MQTT only).
+        http_headers:  Fixed request headers for HTTP signaling (HTTP only).
 
     Returns the connected signaler.  Calls ``sys.exit(1)`` on failure.
     """
@@ -160,6 +185,15 @@ def build_signaler(signaling_url: str, session_id: str,
             sys.exit(1)
         return signaler
 
+    elif scheme in ("http", "https"):
+        try:
+            from luxai.magpie.transport.webrtc import HttpSignaler  # noqa: PLC0415
+            return HttpSignaler(signaling_url, session_id,
+                                headers=http_headers, request_timeout=timeout)
+        except Exception as e:
+            Logger.error(f"HTTP signaling failed: {e}")
+            sys.exit(1)
+
     elif scheme == "tcp":
         try:
             signaler = ZmqSignaler(signaling_url, session_id, bind=bind)
@@ -171,6 +205,7 @@ def build_signaler(signaling_url: str, session_id: str,
     else:
         Logger.error(
             f"Unsupported signaling scheme '{scheme}://'. "
-            "Supported: mqtt://, mqtts://, tcp:// (ZMQ)"
+            "Supported: mqtt://, mqtts://, ws://, wss:// (MQTT), "
+            "http://, https://, tcp:// (ZMQ)"
         )
         sys.exit(1)

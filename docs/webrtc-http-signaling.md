@@ -93,6 +93,21 @@ parse MAGPIE `hello`, SDP, or ICE.
 
 ## Python client
 
+All seven `magpie-*-webrtc` command-line tools also accept an HTTP or HTTPS
+relay URL. For example, after starting the relay, run these in separate
+terminals with the same session ID:
+
+```bash
+magpie-read-webrtc demo /robot/state --signaling http://127.0.0.1:8000/signal
+magpie-write-webrtc demo /robot/state '{"count":1}' --signaling http://127.0.0.1:8000/signal
+```
+
+Use `--http-headers @headers.json` on both commands if the host requires
+authentication. The file must be a JSON object of string headers, for example
+`{"Authorization":"Bearer TOKEN"}`. `--timeout` sets the HTTP request timeout;
+the default is 10 seconds. CLI headers are fixed for the life of the process.
+For expiring tokens or custom HTTP clients, use the Python API below.
+
 ```python
 from luxai.magpie.transport.webrtc import WebRTCConnection
 

@@ -35,7 +35,7 @@ except ImportError:
 
 from luxai.magpie.utils.logger import Logger
 from luxai.magpie.frames.audio import AudioFrameRaw
-from luxai.magpie.tools._webrtc_tools_common import build_signaler, webrtc_options_type, build_webrtc_options
+from luxai.magpie.tools._webrtc_tools_common import build_signaler, webrtc_options_type, build_webrtc_options, http_headers_type
 from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type
 
 
@@ -50,7 +50,7 @@ def main():
                         help="Audio topic path to publish to (default: audio)")
     parser.add_argument("--signaling", type=str, default="mqtt://127.0.0.1:1883",
                         metavar="URL",
-                        help="Signaling URL: mqtt://host:port or tcp://host:port (ZMQ). "
+                        help="Signaling URL: mqtt://host:port, http(s)://host/path, or tcp://host:port (ZMQ). "
                              "(default: mqtt://127.0.0.1:1883)")
     parser.add_argument("--bind", action="store_true",
                         help="Bind the ZMQ signaling socket (tcp:// only).")
@@ -65,10 +65,13 @@ def main():
     parser.add_argument("--latency", type=str, default="low",
                         help="sounddevice latency: 'low', 'high', or float seconds (default: low)")
     parser.add_argument("--timeout", type=float, default=10.0,
-                        help="Signaling connection timeout in seconds, MQTT only (default: 10).")
+                        help="MQTT connection or HTTP request timeout in seconds (default: 10).")
     parser.add_argument("--mqtt-params", type=mqtt_params_type, default=None,
                         metavar="JSON|@FILE",
                         help="MQTT signaling options (auth, TLS, …) as JSON or @file.json.")
+    parser.add_argument("--http-headers", type=http_headers_type, default=None,
+                        metavar="JSON|@FILE",
+                        help="HTTP signaling request headers as JSON or @file.json.")
     parser.add_argument("--webrtc-options", type=webrtc_options_type, default=None,
                         metavar="JSON|@FILE",
                         help="WebRTC options (TURN servers, codecs, …) as JSON or @file.json.")
@@ -106,7 +109,8 @@ def main():
     signaler = build_signaler(args.signaling, args.session_id,
                               client_id="magpie-webrtc-acap",
                               timeout=args.timeout, bind=args.bind,
-                              mqtt_params=args.mqtt_params)
+                              mqtt_params=args.mqtt_params,
+                              http_headers=args.http_headers)
     conn = WebRTCConnection(signaler=signaler, reconnect=True, options=base_opts)
     pub = WebRtcStreamWriter(conn)
     Logger.info(f"magpie-audio-capture-webrtc: streaming '{args.topic}' on session '{args.session_id}'")
