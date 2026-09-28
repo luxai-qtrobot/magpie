@@ -9,6 +9,7 @@ import argparse
 import os
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from http_signaling import InMemoryRelay, SignalingASGI, SignalingHTTP
@@ -25,6 +26,26 @@ async def optional_demo_token(request: Request, call_next):
         if request.headers.get("Authorization") != "Bearer " + token:
             return Response(status_code=401)
     return await call_next(request)
+
+
+# Browser demos served from localhost may use a different port from this relay.
+# Set MAGPIE_SIGNAL_ALLOWED_ORIGINS to a comma-separated list for other origins.
+allowed_origins = [
+    origin.strip()
+    for origin in os.environ.get("MAGPIE_SIGNAL_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_origin_regex=(
+        None if allowed_origins else r"https?://(?:localhost|127\.0\.0\.1)(?::\d+)?"
+    ),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["*"],
+    expose_headers=["X-Magpie-Sequence"],
+)
 
 
 if __name__ == "__main__":

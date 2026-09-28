@@ -50,6 +50,10 @@ parsing is required on the server. An HTTP implementation may use in-memory
 queues for a single instance or shared storage for multiple instances. The
 reference relay is intentionally in-memory. The FastAPI example supports an
 optional bearer token for a local demonstration (`MAGPIE_SIGNAL_TOKEN`).
+The FastAPI example allows browser origins on `localhost` and `127.0.0.1` by
+default. Set `MAGPIE_SIGNAL_ALLOWED_ORIGINS` to a comma-separated list of
+other allowed origins when hosting a browser client elsewhere. It handles CORS
+preflight requests and exposes `X-Magpie-Sequence` to browser JavaScript.
 Production identity, authorization, TLS termination, and shared storage belong
 to the hosting service.
 

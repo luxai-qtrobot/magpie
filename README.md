@@ -424,6 +424,8 @@ pip install fastapi uvicorn
 python examples/webrtc/http_signaling_server.py
 ```
 
+The demo server accepts browser requests from `localhost` and `127.0.0.1` on any port. For a browser page hosted elsewhere, set `MAGPIE_SIGNAL_ALLOWED_ORIGINS` to its origin (or a comma-separated list of origins) before starting the server. Serve browser pages over HTTP or HTTPS; opening an HTML file directly has a different origin.
+
 Install the WebRTC extra, which includes the HTTP client. In both `examples/webrtc/webrtc_reader.py` and `examples/webrtc/webrtc_writer.py`, comment out the active `with_zmq(...)` block and uncomment the `with_http(...)` block. Then run the peers in separate terminals:
 
 ```bash
