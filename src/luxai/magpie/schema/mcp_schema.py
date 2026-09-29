@@ -33,7 +33,7 @@ class McpSchema(JsonRpcSchema):
 
         server = MqttRpcResponder(conn, service_name="robot-01", schema=schema)
         while True:
-            server.handle_once(timeout=1.0)
+            server.respond(timeout=1.0)
     """
 
     # Built-in MCP method names — never exposed as tools

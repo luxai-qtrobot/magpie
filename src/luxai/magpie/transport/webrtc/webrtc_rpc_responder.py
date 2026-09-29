@@ -36,7 +36,7 @@ class WebRTCRpcResponder(RpcResponder):
         responder = WebRTCRpcResponder(conn, service_name="robot/motion")
         while True:
             try:
-                responder.handle_once(handler=on_request, timeout=1.0)
+                responder.respond(handler=on_request, timeout=1.0)
             except TimeoutError:
                 pass
             except KeyboardInterrupt:

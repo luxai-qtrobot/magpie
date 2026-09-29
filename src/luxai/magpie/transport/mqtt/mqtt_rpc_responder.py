@@ -37,7 +37,7 @@ class MqttRpcResponder(RpcResponder):
         responder = MqttRpcResponder(conn, service_name="myrobot/motion")
         while True:
             try:
-                responder.handle_once(handler=handler, timeout=1.0)
+                responder.respond(handler=handler, timeout=1.0)
             except TimeoutError:
                 pass
             except KeyboardInterrupt:

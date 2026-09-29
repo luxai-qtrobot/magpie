@@ -70,7 +70,7 @@ Logger.info("Math robot MCP server running over WebRTC. Press Ctrl-C to stop.")
 try:
     while True:
         try:
-            responder.handle_once(timeout=1.0)
+            responder.respond(timeout=1.0)
         except TimeoutError:
             pass
 except KeyboardInterrupt:

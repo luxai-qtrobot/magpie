@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
     while True: 
         try:
-            status = server.handle_once(handler=on_request, timeout=1.0)        
+            status = server.respond(handler=on_request, timeout=1.0)
         except TimeoutError:
             Logger.warning(f"zmq_responder example timout on responding...")         
         except KeyboardInterrupt:

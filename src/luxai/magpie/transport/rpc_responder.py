@@ -20,7 +20,7 @@ class RpcResponder(ABC):
         Args:
             name (str, optional): The name for this responder. Defaults to class name.
             schema (BaseSchema, optional): Schema for automatic request dispatch.
-                When set, handler is not required in handle_once().
+                When set, handler is not required in respond().
         """
         self.name = name if name is not None else self.__class__.__name__
         self._closed = False
@@ -72,6 +72,14 @@ class RpcResponder(ABC):
         pass
 
     
+    def respond(self, handler: Optional[RpcHandlerType] = None, timeout: float = None) -> bool:
+        """Wait for one request, invoke the handler or schema, and send its reply.
+
+        Returns True when a request was handled, or False on timeout.
+        ``handle_once`` remains available as a backward-compatible name.
+        """
+        return self.handle_once(handler=handler, timeout=timeout)
+
     def handle_once(self, handler: Optional[RpcHandlerType] = None, timeout: float = None) -> bool:
         """
         Handles a single incoming request.

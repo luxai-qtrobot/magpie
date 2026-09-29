@@ -11,7 +11,7 @@ class ZMQRpcResponder(RpcResponder):
 
     This class represents an RPC server using a ZeroMQ ROUTER socket.
     It receives requests from DEALER clients, deserializes them using the
-    provided serializer, calls a handler (via RpcResponder.handle_once),
+    provided serializer, calls a handler (via RpcResponder.respond),
     and sends back serialized responses.
     """
 

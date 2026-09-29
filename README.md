@@ -15,6 +15,9 @@
   <a href="https://pypi.org/project/luxai-magpie/">
     <img src="https://img.shields.io/pypi/pyversions/luxai-magpie" alt="Python versions"/>
   </a>
+  <a href="https://luxai-qtrobot.github.io/magpie-doc/">
+    <img src="https://img.shields.io/badge/docs-MAGPIE-118e78" alt="MAGPIE documentation"/>
+  </a>
   <a href="https://github.com/luxai-qtrobot/magpie/blob/main/LICENSE">
     <img src="https://img.shields.io/pypi/l/luxai-magpie" alt="License"/>
   </a>
@@ -148,13 +151,15 @@ def handle(request):
 server = ZMQRpcResponder("tcp://*:5556")
 while True:
     try:
-        server.handle_once(handler=handle, timeout=1.0)
+        server.respond(handler=handle, timeout=1.0)
     except TimeoutError:
         pass
     except KeyboardInterrupt:
         server.close()
         break
 ```
+
+`respond()` processes one request and returns `False` on timeout. The previous `handle_once()` name remains available for existing code.
 
 **Requester:**
 
@@ -230,7 +235,7 @@ def handle(request):
 server = MqttRpcResponder(conn, service_name="myservice/actions")
 while True:
     try:
-        server.handle_once(handler=handle, timeout=1.0)
+        server.respond(handler=handle, timeout=1.0)
     except TimeoutError:
         pass
     except KeyboardInterrupt:
@@ -354,7 +359,7 @@ def handle(request):
 server = WebRTCRpcResponder(conn, service_name="service/actions")
 while True:
     try:
-        server.handle_once(handler=handle, timeout=1.0)
+        server.respond(handler=handle, timeout=1.0)
     except TimeoutError:
         pass
     except KeyboardInterrupt:
@@ -501,7 +506,7 @@ schema.register(
 server = ZMQRpcResponder("tcp://*:5556", schema=schema)
 while True:
     try:
-        server.handle_once(timeout=1.0)
+        server.respond(timeout=1.0)
     except TimeoutError:
         pass
     except KeyboardInterrupt:
@@ -640,7 +645,7 @@ Serve loop is the same for all:
 ```python
 while True:
     try:
-        server.handle_once(timeout=1.0)
+        server.respond(timeout=1.0)
     except TimeoutError:
         pass
     except KeyboardInterrupt:

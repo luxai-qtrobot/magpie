@@ -23,7 +23,7 @@ The top of the stack. The user works with exactly four methods regardless of whi
 | Pattern | Write side | Read side |
 |---|---|---|
 | Streaming | `writer.write(data, topic)` | `reader.read(timeout)` |
-| RPC | `requester.call(request, timeout)` | `responder.handle_once(handler, timeout)` |
+| RPC | `requester.call(request, timeout)` | `responder.respond(handler, timeout)` |
 
 No transport-specific code ever leaks into user space.
 
@@ -38,7 +38,7 @@ The heart of MAGPIE. Four abstract base classes define the **complete contract**
 | `StreamWriter` | `_transport_write()`, `_transport_close()` | Background write thread, queue management, drop-oldest policy, idempotent close |
 | `StreamReader` | `_transport_read_blocking()`, `_transport_close()` | Background read thread, queue management, timeout, idempotent close |
 | `RpcRequester` | `_transport_call()`, `_transport_close()` | Closed-check guard, error logging |
-| `RpcResponder` | `_transport_recv()`, `_transport_send()`, `_transport_close()` | `handle_once()` orchestration — recv → call handler → send |
+| `RpcResponder` | `_transport_recv()`, `_transport_send()`, `_transport_close()` | `respond()` orchestration — recv → call handler → send |
 
 The base classes absorb all the complexity: threading, queuing, lifecycle, and error handling. A new transport only needs to fill in pure transport mechanics.
 
@@ -99,7 +99,7 @@ The schema layer sits **above** the transport abstraction and adds structured di
 | `JsonRpcSchema` | JSON-RPC 2.0 dispatcher + envelope builder. Register methods with `@schema.method()`, `schema.register()`, or load from a custom IDL dict with `from_dict()`. Provides `wrap(method, params)` and `unwrap(response)` for the requester side. |
 | `McpSchema` | Extends `JsonRpcSchema` with built-in MCP handshake handlers (`initialize`, `tools/list`, `tools/call`, `ping`). Every user-registered method is automatically exposed as an MCP tool. |
 
-**Responder side** — pass a schema to any `RpcResponder` at construction time; `handle_once()` dispatches automatically with no handler argument needed:
+**Responder side** — pass a schema to any `RpcResponder` at construction time; `respond()` dispatches automatically with no handler argument needed:
 
 ```python
 server = ZMQRpcResponder("tcp://*:5556", schema=McpSchema(name="my-robot"))

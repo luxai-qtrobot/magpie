@@ -73,7 +73,7 @@ if __name__ == "__main__":
 
     while True:
         try:
-            server.handle_once(timeout=1.0)
+            server.respond(timeout=1.0)
         except KeyboardInterrupt:
             Logger.info("stopping...")
             server.close()
