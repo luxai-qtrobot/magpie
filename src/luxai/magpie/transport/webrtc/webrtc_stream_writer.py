@@ -59,9 +59,11 @@ class WebRtcStreamWriter(StreamWriter):
         from luxai.magpie.frames.audio import AudioFrameRaw
 
         if isinstance(data, ImageFrameRaw):
-            self._write_video(data, topic)
+            for peer in self._connection._iter_peers():
+                self._write_video(data, topic, peer)
         elif isinstance(data, AudioFrameRaw):
-            self._write_audio(data, topic)
+            for peer in self._connection._iter_peers():
+                self._write_audio(data, topic, peer)
         else:
             self._write_data(data, topic)
 
@@ -73,9 +75,8 @@ class WebRtcStreamWriter(StreamWriter):
     # Internal routing
     # ------------------------------------------------------------------
 
-    def _write_video(self, frame: "ImageFrameRaw", topic: str):
+    def _write_video(self, frame: "ImageFrameRaw", topic: str, conn):
         """Send an image frame: RTP track (if topic declared) → magpie-media → magpie."""
-        conn = self._connection
         use_media = conn._use_media_channels
         in_topics = topic in conn.video_topics if use_media else False
 
@@ -111,9 +112,8 @@ class WebRtcStreamWriter(StreamWriter):
     _OPUS_FRAME_SIZE = 960   # samples @ 48000 Hz = 20 ms, the standard Opus frame size
     _audio_logged = False   # log audio frame properties once per writer instance
 
-    def _write_audio(self, frame: "AudioFrameRaw", topic: str):
+    def _write_audio(self, frame: "AudioFrameRaw", topic: str, conn):
         """Send an audio frame: RTP track (if topic declared) → magpie-media → magpie."""
-        conn = self._connection
         use_media = conn._use_media_channels
         in_topics = topic in conn.audio_topics if use_media else False
 
@@ -135,8 +135,10 @@ class WebRtcStreamWriter(StreamWriter):
                 import av
                 import numpy as np
                 new_samples = av_frame.to_ndarray().flatten()
-                buf_key = f"_audio_buf_{topic}"
-                layout_key = f"_audio_buf_layout_{topic}"
+                # Resampling state is per peer: a late joiner must not consume
+                # samples buffered for an earlier peer.
+                buf_key = f"_audio_buf_{topic}_{conn._remote_peer_id}"
+                layout_key = f"_audio_buf_layout_{topic}_{conn._remote_peer_id}"
                 if not hasattr(self, buf_key):
                     setattr(self, buf_key, np.array([], dtype=np.int16))
                     setattr(self, layout_key, av_frame.layout.name)

@@ -294,6 +294,8 @@ conn.connect()
 
 WebRTC enables **P2P communication over the internet** — no broker in the data path after the initial signaling handshake. Signaling is exchanged via MQTT, ZMQ, or an HTTP relay.
 
+One `WebRTCConnection` manages a separate WebRTC link to each remote peer. `connect()` returns when the first link is ready; later peers can join, and `peer_ids` lists the connected remotes. A stream writer publishes to all connected peers, while RPC ACKs and replies return to the requester. For a service with several clients, set `role="host"` on the service and `role="client"` on each client so clients do not connect to one another. The default `role="mesh"` connects all participants.
+
 Video and audio frames are carried over native WebRTC **RTP media tracks** when topics are declared in `WebRTCOptions`; all other data flows over the data channel.
 
 **Writer (MQTT signaling):**
@@ -303,6 +305,7 @@ from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamWriter, 
 
 conn = WebRTCConnection.with_mqtt(
     "mqtt://mqtt.example.com:1883", session_id="my-node",
+    role="host",
     options=WebRTCOptions(video_topics=["/camera/color/image"]),
 )
 conn.connect()
@@ -322,6 +325,7 @@ from luxai.magpie.transport.webrtc import WebRTCConnection, WebRtcStreamReader, 
 
 conn = WebRTCConnection.with_mqtt(
     "mqtt://mqtt.example.com:1883", session_id="my-node",
+    role="client",
     options=WebRTCOptions(video_topics=["/camera/color/image"]),
 )
 conn.connect()
@@ -337,7 +341,7 @@ vreader.close()
 conn.disconnect()
 ```
 
-> **LAN / localhost:** replace `with_mqtt(...)` with `with_zmq("tcp://127.0.0.1:5555", ..., bind=True/False)` — no broker needed.
+> **LAN / localhost:** replace `with_mqtt(...)` with `with_zmq("tcp://127.0.0.1:5555", ..., bind=True/False)` — no broker needed. For multiple clients, pass `multiplex=True` on every peer; the bound signaler then relays between connecting peers. The default ZMQ PAIR mode remains for existing two-peer setups.
 
 ---
 
@@ -350,7 +354,7 @@ No broker in the hot path — the data channel is bidirectional P2P, so no `repl
 ```python
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcResponder
 
-conn = WebRTCConnection.with_mqtt("mqtt://mqtt.example.com:1883", session_id="my-node-rpc")
+conn = WebRTCConnection.with_mqtt("mqtt://mqtt.example.com:1883", session_id="my-node-rpc", role="host")
 conn.connect()
 
 def handle(request):
@@ -374,7 +378,7 @@ conn.disconnect()
 ```python
 from luxai.magpie.transport.webrtc import WebRTCConnection, WebRTCRpcRequester
 
-conn = WebRTCConnection.with_mqtt("mqtt://mqtt.example.com:1883", session_id="my-node-rpc")
+conn = WebRTCConnection.with_mqtt("mqtt://mqtt.example.com:1883", session_id="my-node-rpc", role="client")
 conn.connect()
 
 client = WebRTCRpcRequester(conn, service_name="service/actions")
@@ -420,7 +424,7 @@ conn = WebRTCConnection.with_mqtt("mqtt://mqtt.example.com:1883",
 
 ### WebRTC HTTP Signaling
 
-HTTP signaling uses the same two-peer `hello`, SDP, and ICE exchange as MQTT. Each peer POSTs outgoing messages and long-polls its inbox. The relay routes opaque bytes and does **not** import MAGPIE or parse SDP. Media, streams, and RPC still flow over WebRTC after negotiation.
+HTTP signaling carries `hello`, SDP, and ICE messages for every peer in a session. With the Python example relay, each peer sends its initial `hello` in its registration PUT; the relay caches it for later peers and delivers existing peers' hellos to the newcomer. Peers long-poll for new messages and to keep their registration alive, with no repeated hello POSTs while waiting or connected. The relay forwards opaque bytes and does **not** import MAGPIE or parse SDP. Media, streams, and RPC still flow over pairwise WebRTC links after negotiation. Older relays without cached joins still work through periodic hello POSTs.
 
 The server example needs FastAPI and Uvicorn, but does not need MAGPIE. Run it from the repository root:
 
@@ -441,7 +445,9 @@ python examples/webrtc/webrtc_writer.py
 
 The audio, video, and multimedia WebRTC examples also include commented HTTP signaling options. Set the same signal URL and session ID on both peers. The example `stun_servers=[]` setting is for local peers; configure STUN or TURN as needed across networks.
 
-If joining reports `409 Conflict`, that session already has two participants. Stop any old peers; after an abrupt exit, restart the example server or wait up to 90 seconds for the stale slot to expire.
+The example relay accepts multiple participants per session. Use the same session ID and choose `role="host"` for a service and `role="client"` for its viewers or callers.
+
+The WebRTC command-line tools expose the same topology with `--role host` or `--role client`. For multi-peer ZMQ signaling, pass `--zmq-multiplex` on the bound peer and every connecting peer.
 
 For an authenticated application server, pass fixed headers and a provider for refreshed credentials. The provider runs before **every** HTTP request. An optional `http_client` can supply custom HTTP behavior; MAGPIE borrows it, so the caller closes it.
 
@@ -454,6 +460,7 @@ conn = WebRTCConnection.with_http(
     headers={"X-Tenant": "my-team"},
     headers_provider=lambda: {"Authorization": f"Bearer {get_current_token()}"},
     options=WebRTCOptions(video_topics=["/camera/color/image"]),
+    role="host",
     reconnect=True,
 )
 conn.connect(timeout=30)

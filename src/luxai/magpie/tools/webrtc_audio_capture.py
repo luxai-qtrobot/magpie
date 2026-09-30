@@ -34,6 +34,7 @@ except ImportError:
     sys.exit(1)
 
 from luxai.magpie.utils.logger import Logger
+from luxai.magpie.utils.common import get_uinque_id
 from luxai.magpie.frames.audio import AudioFrameRaw
 from luxai.magpie.tools._webrtc_tools_common import build_signaler, webrtc_options_type, build_webrtc_options, http_headers_type
 from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type
@@ -54,6 +55,10 @@ def main():
                              "(default: mqtt://127.0.0.1:1883)")
     parser.add_argument("--bind", action="store_true",
                         help="Bind the ZMQ signaling socket (tcp:// only).")
+    parser.add_argument("--role", choices=("mesh", "host", "client"), default="mesh",
+                        help="Peer topology: mesh, host, or client (default: mesh).")
+    parser.add_argument("--zmq-multiplex", action="store_true",
+                        help="Use ROUTER/DEALER ZMQ signaling for multiple peers (tcp:// only).")
     parser.add_argument("--device", type=str, default=None,
                         help="sounddevice input device index or name. Uses default if omitted.")
     parser.add_argument("--samplerate", type=int, default=48000,
@@ -108,10 +113,10 @@ def main():
 
     signaler = build_signaler(args.signaling, args.session_id,
                               client_id="magpie-webrtc-acap",
-                              timeout=args.timeout, bind=args.bind,
+                              timeout=args.timeout, bind=args.bind, multiplex=args.zmq_multiplex,
                               mqtt_params=args.mqtt_params,
                               http_headers=args.http_headers)
-    conn = WebRTCConnection(signaler=signaler, reconnect=True, options=base_opts)
+    conn = WebRTCConnection(signaler=signaler, reconnect=True, role=args.role, options=base_opts)
     pub = WebRtcStreamWriter(conn)
     Logger.info(f"magpie-audio-capture-webrtc: streaming '{args.topic}' on session '{args.session_id}'")
 
@@ -125,6 +130,8 @@ def main():
         callback=audio_callback,
     )
 
+    frame_gid = get_uinque_id()
+    frame_id = 0
     try:
         conn.connect()
         stream.start()
@@ -151,12 +158,15 @@ def main():
                 ch = block.shape[1]
 
             frame = AudioFrameRaw(
+                gid=frame_gid,
+                id=frame_id,
                 data=block.tobytes(),
                 sample_rate=args.samplerate,
                 channels=ch,
                 bit_depth=16,
             )
             pub.write(frame, topic=args.topic)
+            frame_id += 1
 
     except KeyboardInterrupt:
         Logger.info("magpie-audio-capture-webrtc: interrupted.")

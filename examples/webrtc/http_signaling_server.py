@@ -44,7 +44,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
-    expose_headers=["X-Magpie-Sequence"],
+    expose_headers=["X-Magpie-Sequence", "X-Magpie-Join-Announcements"],
 )
 
 

@@ -43,6 +43,10 @@ def main():
                              "(default: mqtt://127.0.0.1:1883)")
     parser.add_argument("--bind", action="store_true",
                         help="Bind the ZMQ signaling socket (tcp:// only).")
+    parser.add_argument("--role", choices=("mesh", "host", "client"), default="mesh",
+                        help="Peer topology: mesh, host, or client (default: mesh).")
+    parser.add_argument("--zmq-multiplex", action="store_true",
+                        help="Use ROUTER/DEALER ZMQ signaling for multiple peers (tcp:// only).")
     parser.add_argument("--pretty", action="store_true",
                         help="Pretty-print JSON messages.")
     parser.add_argument("--once", action="store_true",
@@ -70,10 +74,10 @@ def main():
 
     signaler = build_signaler(args.signaling, args.session_id,
                               client_id="magpie-webrtc-sub",
-                              timeout=args.timeout, bind=args.bind,
+                              timeout=args.timeout, bind=args.bind, multiplex=args.zmq_multiplex,
                               mqtt_params=args.mqtt_params,
                               http_headers=args.http_headers)
-    conn = WebRTCConnection(signaler=signaler, reconnect=True,
+    conn = WebRTCConnection(signaler=signaler, reconnect=True, role=args.role,
                             options=build_webrtc_options(args.webrtc_options, args.signaling))
     sub = WebRtcStreamReader(conn, topic=args.topic)
 

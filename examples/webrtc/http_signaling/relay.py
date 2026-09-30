@@ -1,4 +1,4 @@
-"""Framework-neutral HTTP signaling protocol for two WebRTC peers.
+"""Framework-neutral HTTP signaling protocol for WebRTC peers.
 
 This module uses only the Python standard library and never reads signaling
 payloads. Copy this directory into an application that does not install MAGPIE.
@@ -25,6 +25,7 @@ class HTTPResult:
 class _Mailbox:
     def __init__(self):
         self.messages = deque()  # (sequence, opaque bytes)
+        self.announcement = None  # latest opaque join announcement, if any
         self.next_sequence = 1
         self.seen_ids = set()
         self.seen_order = deque()
@@ -41,7 +42,7 @@ class _Mailbox:
 
 
 class InMemoryRelay:
-    """Thread-safe, single-process mailbox store for at most two peers per room."""
+    """Thread-safe, single-process mailbox store for a signaling room."""
 
     def __init__(self, lease_seconds=90.0):
         self.rooms = {}  # session -> peer -> _Mailbox
@@ -57,13 +58,30 @@ class InMemoryRelay:
             if not room:
                 del self.rooms[session]
 
-    def join(self, session, peer):
+    @staticmethod
+    def _enqueue(box, payload):
+        box.messages.append((box.next_sequence, payload))
+        box.next_sequence += 1
+
+    def join(self, session, peer, announcement=b""):
+        """Atomically exchange a new peer's announcement with room members."""
         with self.changed:
             self._prune()
             room = self.rooms.setdefault(session, {})
-            if peer not in room and len(room) >= 2:
-                return False
-            room.setdefault(peer, _Mailbox()).last_seen = time.monotonic()
+            box = room.get(peer)
+            if box is None:
+                box = room[peer] = _Mailbox()
+                for other_peer, other_box in room.items():
+                    if other_peer != peer and other_box.announcement:
+                        self._enqueue(box, other_box.announcement)
+            box.last_seen = time.monotonic()
+            if announcement and announcement != box.announcement:
+                # A peer that registered without an announcement may add one
+                # later. Repeating the same PUT remains idempotent.
+                box.announcement = bytes(announcement)
+                for other_peer, other_box in room.items():
+                    if other_peer != peer:
+                        self._enqueue(other_box, box.announcement)
             self.changed.notify_all()
             return True
 
@@ -87,8 +105,7 @@ class InMemoryRelay:
                 return True  # retried POST
             for other_peer, box in room.items():
                 if other_peer != peer:
-                    box.messages.append((box.next_sequence, payload))
-                    box.next_sequence += 1
+                    self._enqueue(box, payload)
             self.changed.notify_all()
             return True
 
@@ -133,7 +150,13 @@ class SignalingHTTP:
         is_messages = len(parts) == 5
 
         if method == "PUT" and not is_messages:
-            return HTTPResult(204 if self.relay.join(session, peer) else 409)
+            if len(body) > self.max_message_bytes:
+                return HTTPResult(413)
+            joined = self.relay.join(session, peer, body)
+            return HTTPResult(
+                204 if joined else 409,
+                headers={"X-Magpie-Join-Announcements": "1"},
+            )
         if method == "DELETE" and not is_messages:
             self.relay.leave(session, peer)
             return HTTPResult(204)

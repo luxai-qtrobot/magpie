@@ -3,8 +3,8 @@ WebRTCConnection — shared WebRTC peer connection for MAGPIE.
 
 Architecture overview
 ---------------------
-* One ``WebRTCConnection`` per peer pair, shared by all publishers,
-  subscribers, and RPC components — mirroring ``MqttConnection``.
+* The private peer link below handles one remote participant. The public
+  ``WebRTCConnection`` shares publishers, subscribers and RPC across links.
 * A single ``asyncio`` event loop runs in a dedicated background thread;
   all aiortc operations live there.
 * Signaling (SDP offer/answer + ICE candidates) is exchanged via a
@@ -153,9 +153,9 @@ def _union_topics(own: List[str], remote: List[str]) -> List[str]:
 # WebRTCConnection
 # ---------------------------------------------------------------------------
 
-class WebRTCConnection:
+class _PeerWebRTCConnection:
     """
-    Shared WebRTC peer connection.
+    Internal one-to-one WebRTC peer connection.
 
     Create **one** instance per peer pair and pass it to
     ``WebRtcStreamWriter``, ``WebRtcStreamReader``, ``WebRTCRpcRequester``, and
@@ -186,6 +186,9 @@ class WebRTCConnection:
         *,
         reconnect: bool = False,
         options: Optional[WebRTCOptions] = None,
+        peer_id: Optional[str] = None,
+        on_state_change: Optional[Callable[[bool], None]] = None,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
     ):
         """
         Args:
@@ -212,7 +215,8 @@ class WebRTCConnection:
 
         # Session / peer identity
         self._session_id: str = signaler.session_id
-        self._peer_id: str = get_uinque_id()[:12]
+        self._peer_id: str = peer_id or get_uinque_id()[:12]
+        self._on_state_change = on_state_change
 
         # Media topic lists (from options)
         self._audio_topics: List[str] = list(self._options.audio_topics)
@@ -246,8 +250,10 @@ class WebRTCConnection:
         self._video_recv_idx: int = 0
 
         # Asyncio loop in background thread
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = loop
         self._loop_thread: Optional[threading.Thread] = None
+        self._owns_loop = loop is None
+        self._started = False
 
         # Signaling state
         self._remote_peer_id: Optional[str] = None
@@ -309,21 +315,7 @@ class WebRTCConnection:
 
         Returns ``True`` on success, ``False`` on timeout or failure.
         """
-        self._connect_event.clear()
-        self._connect_success = False
-
-        # Start dedicated asyncio loop in a background daemon thread
-        self._loop = asyncio.new_event_loop()
-        self._loop_thread = threading.Thread(
-            target=self._run_loop, name="WebRTCLoop", daemon=True
-        )
-        self._loop_thread.start()
-
-        # Subscribe to signaling channel
-        self._signaler.subscribe(self._on_signal_message)
-
-        # Kick off the async setup
-        asyncio.run_coroutine_threadsafe(self._connect_async(), self._loop)
+        self.start()
 
         import time as _time
         deadline = _time.monotonic() + timeout if timeout is not None else None
@@ -349,6 +341,22 @@ class WebRTCConnection:
             )
         return self._connect_success
 
+    def start(self) -> None:
+        """Start negotiation without waiting; used by the connection manager."""
+        if self._started:
+            return
+        self._started = True
+        self._connect_event.clear()
+        self._connect_success = False
+        if self._owns_loop:
+            self._loop = asyncio.new_event_loop()
+            self._loop_thread = threading.Thread(
+                target=self._run_loop, name="WebRTCLoop", daemon=True
+            )
+            self._loop_thread.start()
+        self._signaler.subscribe(self._on_signal_message)
+        asyncio.run_coroutine_threadsafe(self._connect_async(), self._loop)
+
     def disconnect(self):
         """Close the peer connection, signaler, and clean up all resources."""
         self._closing = True
@@ -356,9 +364,10 @@ class WebRTCConnection:
 
         self._signaler.unsubscribe()
 
-        if self._loop and not self._loop.is_closed():
+        if self._started and self._loop and not self._loop.is_closed():
             asyncio.run_coroutine_threadsafe(self._close_async(), self._loop).result(timeout=5.0)
-            self._loop.call_soon_threadsafe(self._loop.stop)
+            if self._owns_loop:
+                self._loop.call_soon_threadsafe(self._loop.stop)
 
         if self._loop_thread and self._loop_thread.is_alive():
             self._loop_thread.join(timeout=3.0)
@@ -580,7 +589,17 @@ class WebRTCConnection:
 
     def _run_loop(self):
         asyncio.set_event_loop(self._loop)
-        self._loop.run_forever()
+        try:
+            self._loop.run_forever()
+        finally:
+            pending = asyncio.all_tasks(self._loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                self._loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
+            self._loop.close()
 
     async def _close_async(self):
         if self._media_send_task is not None:
@@ -748,6 +767,8 @@ class WebRTCConnection:
                     )
             elif state in ("failed", "disconnected", "closed"):
                 self._connected = False
+                if self._on_state_change is not None:
+                    self._on_state_change(False)
                 if not self._connect_event.is_set():
                     self._connect_event.set()  # unblock connect() with failure
                 elif self._reconnect and not self._closing:
@@ -857,6 +878,8 @@ class WebRTCConnection:
             if not self._connect_event.is_set():
                 self._connect_success = True
                 self._connect_event.set()
+            if self._on_state_change is not None:
+                self._on_state_change(True)
 
         # Answerer: on_datachannel may fire when the channel is already open,
         # in which case on_open never fires — handle it immediately.
@@ -864,6 +887,8 @@ class WebRTCConnection:
             if not self._connect_event.is_set():
                 self._connect_success = True
                 self._connect_event.set()
+            if self._on_state_change is not None:
+                self._on_state_change(True)
 
         @dc.on("message")
         def on_message(data):
@@ -963,6 +988,8 @@ class WebRTCConnection:
     async def _receive_video(self, track, topic: str):
         """Drain incoming video frames and dispatch to registered callbacks for *topic*."""
         from luxai.magpie.frames.image import ImageFrameRaw
+        frame_gid = get_uinque_id()
+        frame_id = 0
         Logger.debug(f"WebRTCConnection({self._peer_id}): receiving video track for '{topic}'.")
         try:
             while not self._closing:
@@ -971,6 +998,8 @@ class WebRTCConnection:
                     arr = av_frame.to_ndarray(format="bgr24")
                     h, w, c = arr.shape
                     frame = ImageFrameRaw(
+                        gid=frame_gid,
+                        id=frame_id,
                         data=arr.tobytes(),
                         format="raw",
                         width=w,
@@ -978,6 +1007,7 @@ class WebRTCConnection:
                         channels=c,
                         pixel_format="BGR",
                     )
+                    frame_id += 1
                     with self._routing_lock:
                         callbacks = list(self._video_callbacks.get(topic, []))
                     for cb in callbacks:
@@ -999,6 +1029,8 @@ class WebRTCConnection:
     async def _receive_audio(self, track, topic: str):
         """Drain incoming audio frames and dispatch to registered callbacks for *topic*."""
         from luxai.magpie.frames.audio import AudioFrameRaw
+        frame_gid = get_uinque_id()
+        frame_id = 0
         Logger.debug(f"WebRTCConnection({self._peer_id}): receiving audio track for '{topic}'.")
         try:
             while not self._closing:
@@ -1022,12 +1054,15 @@ class WebRTCConnection:
                         n = (len(samples) // num_channels) * num_channels
                         samples = samples[:n]
                     frame = AudioFrameRaw(
+                        gid=frame_gid,
+                        id=frame_id,
                         data=samples.tobytes(),
                         channels=num_channels,
                         sample_rate=av_frame.sample_rate,
                         bit_depth=16,
                         format="PCM",
                     )
+                    frame_id += 1
                     with self._routing_lock:
                         callbacks = list(self._audio_callbacks.get(topic, []))
                     for cb in callbacks:
@@ -1368,3 +1403,7 @@ class WebRTCConnection:
                     f"buffered ICE candidate error: {e}"
                 )
         self._pending_ice_candidates.clear()
+
+
+# Keep the historical import path while exposing the multi-peer manager.
+from .multi_webrtc_connection import WebRTCConnection  # noqa: E402

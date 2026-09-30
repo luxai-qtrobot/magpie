@@ -137,7 +137,7 @@ def build_webrtc_options(d: Optional[dict], signaling_url: str = ""):
 def build_signaler(signaling_url: str, session_id: str,
                    client_id: str = None, timeout: float = 10.0,
                    bind: bool = False, mqtt_params: dict = None,
-                   http_headers: dict = None):
+                   http_headers: dict = None, multiplex: bool = False):
     """
     Parse *signaling_url* and return a connected :class:`WebRtcSignaler`.
 
@@ -154,6 +154,7 @@ def build_signaler(signaling_url: str, session_id: str,
         client_id:     Optional MQTT client ID (ignored for HTTP and ZMQ).
         timeout:       MQTT connection or HTTP request timeout (ignored for ZMQ).
         bind:          For ZMQ: ``True`` to bind the socket (server side).
+        multiplex:     For ZMQ: allow multiple peers via ROUTER/DEALER.
         mqtt_params:   Parsed ``--mqtt-params`` dict for auth/TLS options (MQTT only).
         http_headers:  Fixed request headers for HTTP signaling (HTTP only).
 
@@ -196,7 +197,8 @@ def build_signaler(signaling_url: str, session_id: str,
 
     elif scheme == "tcp":
         try:
-            signaler = ZmqSignaler(signaling_url, session_id, bind=bind)
+            signaler = ZmqSignaler(signaling_url, session_id, bind=bind,
+                                   multiplex=multiplex)
         except ImportError as e:
             Logger.error(str(e))
             sys.exit(1)

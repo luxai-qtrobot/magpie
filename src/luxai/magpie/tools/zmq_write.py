@@ -6,6 +6,7 @@ import time
 from typing import Any, Dict, Optional
 
 from luxai.magpie.utils.logger import Logger
+from luxai.magpie.utils.common import get_uinque_id
 from luxai.magpie.nodes.source_node import SourceNode
 from luxai.magpie.transport.zmq.zmq_stream_writer import ZmqStreamWriter
 from luxai.magpie.frames import DictFrame
@@ -57,6 +58,7 @@ class MagpieWriter(SourceNode):
         self.loop = loop          # write forever
         self.raw = raw            # write as-is, skip DictFrame wrapping
         self._written = 0
+        self._frame_gid = get_uinque_id() if not raw else None
         self._write_time = None
 
         Logger.info(f"{self.name}: topic={self.topic} rate={self.rate}Hz "
@@ -65,7 +67,9 @@ class MagpieWriter(SourceNode):
     def process(self):
         self._write_time = time.time()
 
-        payload = self.data if self.raw else DictFrame(value=self.data).to_dict()
+        payload = self.data if self.raw else DictFrame(
+            value=self.data, gid=self._frame_gid, id=self._written
+        ).to_dict()
 
         # Single-shot: write once then just idle (socket stays alive until Ctrl+C)
         if self.rate is None:

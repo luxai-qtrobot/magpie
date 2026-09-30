@@ -1,4 +1,4 @@
-"""HTTP long-poll signaling for two WebRTC peers.
+"""HTTP long-poll signaling for WebRTC peers.
 
 The HTTP server only routes opaque bytes.  The wire contract is documented in
 ``docs/webrtc-http-signaling.md``. The server does not require MAGPIE. All
@@ -39,6 +39,7 @@ class HttpSignaler(WebRtcSignaler):
         http_client=None,
         poll_wait: float = 20.0,
         request_timeout: float = 10.0,
+        register_on_init: bool = True,
     ):
         try:
             import httpx
@@ -76,6 +77,9 @@ class HttpSignaler(WebRtcSignaler):
         self._client = http_client if http_client is not None else httpx.Client()
         self._callback: Optional[Callable[[bytes], None]] = None
         self._cursor = 0
+        self._announcement = b""
+        self._supports_join_announcements = False
+        self._register_lock = threading.Lock()
         self._closed = False
         self._stop = threading.Event()
         self._subscribed = threading.Event()
@@ -83,12 +87,13 @@ class HttpSignaler(WebRtcSignaler):
         self._poll_thread: Optional[threading.Thread] = None
         self._send_thread: Optional[threading.Thread] = None
 
-        try:
-            self._register()
-        except Exception:
-            if self._owns_client:
-                self._client.close()
-            raise
+        if register_on_init:
+            try:
+                self._register()
+            except Exception:
+                if self._owns_client:
+                    self._client.close()
+                raise
 
         self._send_thread = threading.Thread(
             target=self._send_loop, name="HttpSignalerSend", daemon=True
@@ -102,6 +107,18 @@ class HttpSignaler(WebRtcSignaler):
     @property
     def participant_id(self) -> str:
         return self._participant_id
+
+    @property
+    def supports_join_announcements(self) -> bool:
+        return self._supports_join_announcements
+
+    def announce(self, payload: bytes) -> bool:
+        """Register an opaque hello and return whether the relay caches it."""
+        if self._closed:
+            raise RuntimeError("HttpSignaler is disconnected")
+        self._announcement = bytes(payload)
+        self._register(reset_cursor=False)
+        return self._supports_join_announcements
 
     @staticmethod
     def _encode_id(value: str) -> str:
@@ -155,18 +172,25 @@ class HttpSignaler(WebRtcSignaler):
             timeout=kwargs.pop("timeout", self._request_timeout), **kwargs
         )
 
-    def _register(self) -> None:
-        response = self._request("PUT", self._peer_url)
-        if response.status_code == 409:
-            raise self._httpx.HTTPStatusError(
-                f"HTTP signaling session {self._session_id!r} already has two "
-                "participants. Stop an old peer, wait for its lease to expire, "
-                "restart the example relay, or choose a new session ID.",
-                request=response.request,
-                response=response,
+    def _register(self, *, reset_cursor: bool = True) -> None:
+        with self._register_lock:
+            response = self._request(
+                "PUT", self._peer_url, content=self._announcement,
+                headers={"Content-Type": "application/octet-stream"},
             )
-        response.raise_for_status()
-        self._cursor = 0  # relay may have restarted its sequence numbers
+            if response.status_code == 409:
+                raise self._httpx.HTTPStatusError(
+                    f"HTTP signaling session {self._session_id!r} rejected "
+                    "this participant (409 Conflict).",
+                    request=response.request,
+                    response=response,
+                )
+            response.raise_for_status()
+            self._supports_join_announcements = (
+                response.headers.get("X-Magpie-Join-Announcements") == "1"
+            )
+            if reset_cursor:
+                self._cursor = 0  # relay may have restarted its sequence numbers
 
     def _send_loop(self) -> None:
         while not self._stop.is_set():

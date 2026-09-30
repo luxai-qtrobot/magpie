@@ -168,11 +168,11 @@ class MqttSignaler(WebRtcSignaler):
 
 class ZmqSignaler(WebRtcSignaler):
     """
-    ZMQ PAIR socket signaling transport — broker-less, LAN / local use.
+    ZMQ signaling transport — broker-less, LAN / local use.
 
-    Uses a ZMQ ``PAIR`` socket which is inherently bidirectional.  One peer
-    must bind (``bind=True``) and the other must connect (``bind=False``,
-    the default).
+    By default, uses the legacy two-peer ZMQ ``PAIR`` socket. Set
+    ``multiplex=True`` on all participants to use ROUTER/DEALER signaling:
+    one peer binds and any number of clients connect to it.
 
     Requires: ``pyzmq`` (already a dependency of the base magpie install).
 
@@ -189,7 +189,8 @@ class ZmqSignaler(WebRtcSignaler):
         conn.connect()
     """
 
-    def __init__(self, endpoint: str, session_id: str, *, bind: bool = False):
+    def __init__(self, endpoint: str, session_id: str, *, bind: bool = False,
+                 multiplex: bool = False):
         """
         Args:
             endpoint:   ZMQ endpoint, e.g. ``tcp://192.168.1.10:5555``.
@@ -212,6 +213,7 @@ class ZmqSignaler(WebRtcSignaler):
         self._session_id = session_id
         self._endpoint = endpoint
         self._bind = bind
+        self._multiplex = multiplex
         self._callback: Optional[Callable[[bytes], None]] = None
         self._closed = False
         self._send_queue: queue.Queue = queue.Queue()
@@ -251,7 +253,9 @@ class ZmqSignaler(WebRtcSignaler):
         import zmq
 
         ctx = zmq.Context()
-        sock = ctx.socket(zmq.PAIR)
+        sock = ctx.socket(
+            zmq.ROUTER if self._bind else zmq.DEALER
+        ) if self._multiplex else ctx.socket(zmq.PAIR)
         sock.setsockopt(zmq.LINGER, 0)
         if self._bind:
             sock.bind(self._endpoint)
@@ -262,6 +266,7 @@ class ZmqSignaler(WebRtcSignaler):
 
         poller = zmq.Poller()
         poller.register(sock, zmq.POLLIN)
+        identities = set()
 
         try:
             while not self._closed:
@@ -271,7 +276,14 @@ class ZmqSignaler(WebRtcSignaler):
                         payload = self._send_queue.get_nowait()
                         if payload is None:  # shutdown sentinel
                             return
-                        sock.send(payload)
+                        if self._multiplex and self._bind:
+                            for identity in tuple(identities):
+                                try:
+                                    sock.send_multipart([identity, payload], flags=zmq.DONTWAIT)
+                                except zmq.Again:
+                                    pass
+                        else:
+                            sock.send(payload, flags=zmq.DONTWAIT if self._multiplex else 0)
                     except queue.Empty:
                         break
                     except zmq.ZMQError as e:
@@ -286,7 +298,20 @@ class ZmqSignaler(WebRtcSignaler):
 
                 if sock in events:
                     try:
-                        data = sock.recv()
+                        if self._multiplex and self._bind:
+                            parts = sock.recv_multipart()
+                            if len(parts) != 2:
+                                continue
+                            identity, data = parts
+                            identities.add(identity)
+                            for other in tuple(identities):
+                                if other != identity:
+                                    try:
+                                        sock.send_multipart([other, data], flags=zmq.DONTWAIT)
+                                    except zmq.Again:
+                                        pass
+                        else:
+                            data = sock.recv()
                         cb = self._callback
                         if cb is not None:
                             try:

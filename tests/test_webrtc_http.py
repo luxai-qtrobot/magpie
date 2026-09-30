@@ -15,6 +15,7 @@ httpx = pytest.importorskip("httpx")
 from examples.webrtc.http_signaling import (  # noqa: E402
     InMemoryRelay, SignalingASGI, SignalingHTTP, SignalingWSGI,
 )
+from examples.webrtc.http_signaling.relay import HTTPResult  # noqa: E402
 from luxai.magpie.transport.webrtc import (  # noqa: E402
     HttpSignaler,
     WebRTCConnection,
@@ -65,6 +66,46 @@ def _segment(value):
     return base64.urlsafe_b64encode(value.encode()).decode().rstrip("=")
 
 
+def test_join_announcements_are_cached_and_exchanged_atomically():
+    protocol = SignalingHTTP(InMemoryRelay())
+
+    def peer_path(peer):
+        return f"/sessions/{_segment('room')}/peers/{_segment(peer)}"
+
+    def join(peer, announcement):
+        result = protocol.handle("PUT", peer_path(peer), body=announcement)
+        assert result.status == 204
+        assert result.headers["X-Magpie-Join-Announcements"] == "1"
+
+    def inbox(peer, after=0):
+        return protocol.handle(
+            "GET", peer_path(peer) + "/messages", query=f"after={after}&wait=0"
+        )
+
+    join("a", b"hello-a")
+    assert inbox("a").status == 204  # no self-echo
+    join("b", b"hello-b")
+    assert inbox("a").body == b"hello-b"
+    assert inbox("b").body == b"hello-a"
+
+    # Both peers are already connected when c joins. The relay replays their
+    # cached hellos to c and announces c to both existing peers.
+    join("c", b"hello-c")
+    assert inbox("c").body == b"hello-a"
+    assert inbox("c", after=1).body == b"hello-b"
+    assert inbox("a", after=1).body == b"hello-c"
+    assert inbox("b", after=1).body == b"hello-c"
+
+    join("b", b"hello-b")
+    assert inbox("a", after=2).status == 204  # repeated PUT is idempotent
+
+    # A legacy client may register without a body, then supply one later.
+    join("d", b"")
+    assert inbox("d").body == b"hello-a"
+    join("d", b"hello-d")
+    assert inbox("a", after=2).body == b"hello-d"
+
+
 def test_cli_http_signaling_with_auth_headers(relay, tmp_path):
     headers_file = tmp_path / "headers.json"
     headers_file.write_text('{"Authorization":"Bearer test-token"}', encoding="utf-8")
@@ -107,7 +148,7 @@ def test_asgi_adapter_exposes_complete_protocol():
             assert (await client.put(a)).status_code == 204
             assert (await client.put(b)).status_code == 204
             third = await client.put(f"/signal/sessions/{_segment('room')}/peers/cw")
-            assert third.status_code == 409
+            assert third.status_code == 204
 
             headers = {"X-Magpie-Message-Id": "message-1"}
             sent = await client.post(a + "/messages", content=b"opaque", headers=headers)
@@ -137,6 +178,18 @@ def test_asgi_adapter_exposes_complete_protocol():
             assert (await client.delete(b)).status_code == 204
             gone = await client.get(b + "/messages", params={"wait": 0})
             assert gone.status_code == 404
+
+            # FastAPI mounts this ASGI adapter, so its PUT body must survive
+            # the adapter and be replayed to a peer that joins later.
+            x = f"/signal/sessions/{_segment('cached')}/peers/{_segment('x')}"
+            y = f"/signal/sessions/{_segment('cached')}/peers/{_segment('y')}"
+            joined = await client.put(x, content=b"hello-x")
+            assert joined.headers["X-Magpie-Join-Announcements"] == "1"
+            assert (await client.put(y, content=b"hello-y")).status_code == 204
+            x_message = await client.get(x + "/messages", params={"wait": 0})
+            y_message = await client.get(y + "/messages", params={"wait": 0})
+            assert x_message.content == b"hello-y"
+            assert y_message.content == b"hello-x"
 
     asyncio.run(exercise())
 
@@ -208,17 +261,18 @@ def test_http_signaler_rejects_bad_authorization(relay):
         HttpSignaler(relay, "auth", headers={"Authorization": "Bearer wrong"})
 
 
-def test_http_signaler_rejects_third_participant(relay):
+def test_http_signaler_accepts_third_participant(relay):
     a = HttpSignaler(relay, "full", headers=_auth())
     b = HttpSignaler(relay, "full", headers=_auth())
+    c = None
     try:
-        with pytest.raises(httpx.HTTPStatusError) as error:
-            HttpSignaler(relay, "full", headers=_auth())
-        assert error.value.response.status_code == 409
-        assert "already has two participants" in str(error.value)
+        c = HttpSignaler(relay, "full", headers=_auth())
+        assert len({a.participant_id, b.participant_id, c.participant_id}) == 3
     finally:
         a.disconnect()
         b.disconnect()
+        if c:
+            c.disconnect()
 
 
 def test_http_signaler_rejoins_after_mailbox_expires(relay):
@@ -258,10 +312,48 @@ def test_http_signaler_rejoins_after_mailbox_expires(relay):
         b.disconnect()
 
 
-def test_http_signaling_webrtc_stream_rpc_and_media(relay):
+def test_older_relay_without_cached_join_header_uses_hello_posts(relay, monkeypatch):
+    pytest.importorskip("aiortc")
+    original_handle = SignalingHTTP.handle
+    original_send = InMemoryRelay.send
+    sent = []
+
+    def without_capability(self, method, path, query="", headers=None, body=b""):
+        response = original_handle(self, method, path, query, headers, body)
+        if method == "PUT":
+            return HTTPResult(response.status, response.body)
+        return response
+
+    def count_send(self, session, peer, message_id, payload):
+        sent.append(payload)
+        return original_send(self, session, peer, message_id, payload)
+
+    monkeypatch.setattr(SignalingHTTP, "handle", without_capability)
+    monkeypatch.setattr(InMemoryRelay, "send", count_send)
+    connection = WebRTCConnection.with_http(
+        relay, "older-relay", headers=_auth(), poll_wait=0.2,
+        options=WebRTCOptions(stun_servers=[]),
+    )
+    try:
+        assert not connection.connect(timeout=1.3)
+        assert not connection._signaler.supports_join_announcements
+        assert sent  # legacy relay needs periodic POSTs for discovery
+    finally:
+        connection.disconnect()
+
+
+def test_http_signaling_webrtc_stream_rpc_and_media(relay, monkeypatch):
     pytest.importorskip("aiortc")
     from luxai.magpie.frames.image import ImageFrameRaw
 
+    sent = []
+    original_send = InMemoryRelay.send
+
+    def count_send(self, session, peer, message_id, payload):
+        sent.append((session, peer, payload))
+        return original_send(self, session, peer, message_id, payload)
+
+    monkeypatch.setattr(InMemoryRelay, "send", count_send)
     options = WebRTCOptions(stun_servers=[], video_topics=["/camera"])
     left = WebRTCConnection.with_http(
         relay, "rtc", headers=_auth(), poll_wait=0.2, options=options
@@ -277,6 +369,7 @@ def test_http_signaling_webrtc_stream_rpc_and_media(relay):
             lfuture = executor.submit(left.connect, 15)
             # The second peer can join after the first has started connecting.
             time.sleep(1.2)
+            assert sent == []  # no periodic hello POST while alone
             right = WebRTCConnection.with_http(
                 relay, "rtc", headers=_auth(), poll_wait=0.2, options=options
             )
@@ -285,6 +378,9 @@ def test_http_signaling_webrtc_stream_rpc_and_media(relay):
             rfuture = executor.submit(right.connect, 15)
             assert lfuture.result(timeout=20)
             assert rfuture.result(timeout=20)
+        posts_after_connect = len(sent)
+        time.sleep(1.3)
+        assert len(sent) == posts_after_connect  # healthy peers stay quiet
         deadline = time.monotonic() + 5
         while (not left.is_video_negotiated("/camera")
                or not right.is_video_negotiated("/camera")) and time.monotonic() < deadline:
@@ -330,3 +426,149 @@ def test_http_signaling_webrtc_stream_rpc_and_media(relay):
         left.disconnect()
         if right:
             right.disconnect()
+
+
+def test_http_webrtc_late_joiner_fanout_and_rpc_reply_routing(relay):
+    pytest.importorskip("aiortc")
+    from luxai.magpie.frames.image import ImageFrameRaw
+    session = "three-peers"
+    connections = [
+        WebRTCConnection.with_http(
+            relay, session, headers=_auth(), poll_wait=0.2,
+            options=WebRTCOptions(stun_servers=[], video_topics=["/camera"]),
+            role=role,
+        ) for role in ("host", "client", "client")
+    ]
+    hub, first, late = connections
+    readers = []
+    writer = None
+    responder = None
+    requesters = []
+    try:
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            a = executor.submit(hub.connect, 15)
+            b = executor.submit(first.connect, 15)
+            assert a.result(timeout=20)
+            assert b.result(timeout=20)
+
+            first_reader = WebRtcStreamReader(first, topic="events")
+            readers.append(first_reader)
+            writer = WebRtcStreamWriter(hub, queue_size=0)
+            writer.write({"seq": 1}, topic="events")
+            assert first_reader.read(timeout=5) == ({"seq": 1}, "events")
+
+            c = executor.submit(late.connect, 15)
+            assert c.result(timeout=20)
+            deadline = time.monotonic() + 10
+            while len(hub.peer_ids) < 2 and time.monotonic() < deadline:
+                time.sleep(0.02)
+            assert len(hub.peer_ids) == 2
+            assert len(first.peer_ids) == 1
+            assert len(late.peer_ids) == 1
+
+            late_reader = WebRtcStreamReader(late, topic="events")
+            readers.append(late_reader)
+            writer.write({"seq": 2}, topic="events")
+            assert first_reader.read(timeout=5) == ({"seq": 2}, "events")
+            assert late_reader.read(timeout=5) == ({"seq": 2}, "events")
+
+            video_readers = [
+                WebRtcStreamReader(first, topic="/camera"),
+                WebRtcStreamReader(late, topic="/camera"),
+            ]
+            readers.extend(video_readers)
+            frame = ImageFrameRaw(
+                data=bytes(64 * 64 * 3), width=64, height=64,
+                channels=3, pixel_format="BGR",
+            )
+            for _ in range(8):
+                writer.write(frame, topic="/camera")
+                time.sleep(0.05)
+            for video_reader in video_readers:
+                received, topic = video_reader.read(timeout=10)
+                assert isinstance(received, ImageFrameRaw)
+                assert topic == "/camera"
+
+            responder = WebRTCRpcResponder(hub, service_name="echo")
+            requesters = [
+                WebRTCRpcRequester(first, service_name="echo"),
+                WebRTCRpcRequester(late, service_name="echo"),
+            ]
+            for requester, number in zip(requesters, (1, 2)):
+                response = executor.submit(
+                    responder.handle_once,
+                    handler=lambda request: {"reply": request}, timeout=5,
+                )
+                assert requester.call({"from": number}, timeout=5) == {
+                    "reply": {"from": number}
+                }
+                response.result(timeout=7)
+            assert not hub._rpc_origins
+    finally:
+        for requester in requesters:
+            requester.close()
+        if responder:
+            responder.close()
+        if writer:
+            writer.close()
+        for reader in readers:
+            reader.close()
+        for connection in connections:
+            connection.disconnect()
+
+
+@pytest.mark.parametrize("host_reconnect,first_reconnect", [
+    (True, False), (False, True), (True, True),
+])
+def test_clients_join_before_host_and_one_link_recovers(
+    relay, host_reconnect, first_reconnect,
+):
+    pytest.importorskip("aiortc")
+    session = "clients-first"
+    options = WebRTCOptions(stun_servers=[])
+    host, first, second = [
+        WebRTCConnection.with_http(
+            relay, session, headers=_auth(), poll_wait=0.2,
+            options=options, role=role, reconnect=reconnect,
+        ) for role, reconnect in (
+            ("host", host_reconnect),
+            ("client", first_reconnect),
+            ("client", False),
+        )
+    ]
+    try:
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            first_result = executor.submit(first.connect, 20)
+            second_result = executor.submit(second.connect, 20)
+            deadline = time.monotonic() + 5
+            while (not first._signaler.supports_join_announcements
+                   or not second._signaler.supports_join_announcements):
+                assert time.monotonic() < deadline
+                time.sleep(0.02)
+            assert not first.peer_ids and not second.peer_ids
+
+            host_result = executor.submit(host.connect, 20)
+            assert host_result.result(timeout=25)
+            assert first_result.result(timeout=25)
+            assert second_result.result(timeout=25)
+            deadline = time.monotonic() + 10
+            while len(host.peer_ids) < 2 and time.monotonic() < deadline:
+                time.sleep(0.02)
+            assert set(host.peer_ids) == {first.peer_id, second.peer_id}
+            healthy_peer = host._peers[second.peer_id]
+            broken_peer = host._peers[first.peer_id]
+
+            host._loop.call_soon_threadsafe(broken_peer._data_channel.close)
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                if (set(host.peer_ids) == {first.peer_id, second.peer_id}
+                        and first.peer_ids == [host.peer_id]
+                        and host._peers[first.peer_id] is not broken_peer):
+                    break
+                time.sleep(0.05)
+            else:
+                pytest.fail("the dropped host-client link did not recover")
+            assert host._peers[second.peer_id] is healthy_peer
+    finally:
+        for connection in (host, first, second):
+            connection.disconnect()

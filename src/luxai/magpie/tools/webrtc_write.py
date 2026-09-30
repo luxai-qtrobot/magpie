@@ -24,6 +24,7 @@ except ImportError:
     sys.exit(1)
 
 from luxai.magpie.utils.logger import Logger
+from luxai.magpie.utils.common import get_uinque_id
 from luxai.magpie.frames import DictFrame
 from luxai.magpie.tools._webrtc_tools_common import build_signaler, webrtc_options_type, build_webrtc_options, http_headers_type
 from luxai.magpie.tools._mqtt_tools_common import mqtt_params_type
@@ -67,6 +68,10 @@ def main():
     parser.add_argument("--bind", action="store_true",
                         help="Bind the ZMQ signaling socket (tcp:// only). "
                              "One peer must bind, the other connects.")
+    parser.add_argument("--role", choices=("mesh", "host", "client"), default="mesh",
+                        help="Peer topology: mesh, host, or client (default: mesh).")
+    parser.add_argument("--zmq-multiplex", action="store_true",
+                        help="Use ROUTER/DEALER ZMQ signaling for multiple peers (tcp:// only).")
     parser.add_argument("--rate", type=float, default=None,
                         help="Write rate in Hz. If omitted, writes once and exits.")
     parser.add_argument("--count", type=int, default=None,
@@ -99,19 +104,22 @@ def main():
 
     signaler = build_signaler(args.signaling, args.session_id,
                               client_id="magpie-webrtc-pub",
-                              timeout=args.timeout, bind=args.bind,
+                              timeout=args.timeout, bind=args.bind, multiplex=args.zmq_multiplex,
                               mqtt_params=args.mqtt_params,
                               http_headers=args.http_headers)
-    conn = WebRTCConnection(signaler=signaler, reconnect=True,
+    conn = WebRTCConnection(signaler=signaler, reconnect=True, role=args.role,
                             options=build_webrtc_options(args.webrtc_options, args.signaling))
 
     pub = WebRtcStreamWriter(conn)
 
     published = 0
+    frame_gid = get_uinque_id() if not args.raw else None
     try:
         conn.connect()
         if args.rate is None:
-            payload = args.data if args.raw else DictFrame(value=args.data).to_dict()
+            payload = args.data if args.raw else DictFrame(
+                value=args.data, gid=frame_gid, id=published
+            ).to_dict()
             pub.write(payload, topic=args.topic)
             published += 1
             Logger.info(f"magpie-write-webrtc: published 1 message")
@@ -119,7 +127,9 @@ def main():
             frame_period = 1.0 / args.rate
             while True:
                 t = time.time()
-                payload = args.data if args.raw else DictFrame(value=args.data).to_dict()
+                payload = args.data if args.raw else DictFrame(
+                    value=args.data, gid=frame_gid, id=published
+                ).to_dict()
                 pub.write(payload, topic=args.topic)
                 published += 1
                 if args.count is not None and published >= args.count:

@@ -1,10 +1,10 @@
 # WebRTC HTTP signaling relay
 
-MAGPIE's `HttpSignaler` uses HTTP only to exchange signaling messages. Both
-peers make outbound HTTP requests to one relay. The relay does not need to
-understand MAGPIE, SDP, ICE, or media topics. It only knows a **session** with
-at most two **participants**, and forwards opaque bytes to the other member.
-The WebRTC peer connection carries all application data after the handshake.
+MAGPIE's `HttpSignaler` uses HTTP only to exchange signaling messages. Each
+participant makes outbound HTTP requests to one relay. The relay does not need
+to understand MAGPIE, SDP, ICE, or media topics. It knows a **session** with
+any number of **participants** and forwards opaque bytes to the other members.
+Each pairwise WebRTC connection carries application data after its handshake.
 
 The reusable helper in `examples/webrtc/http_signaling/` uses only the Python
 standard library and has no MAGPIE import. It contains the protocol logic and
@@ -30,19 +30,40 @@ application decides their meaning.
 
 | Method and path | Meaning | Success response |
 | --- | --- | --- |
-| `PUT {base_url}/sessions/{session}/peers/{peer}` | Join or renew membership. Reject a third participant. | `204`; `409` when full |
-| `POST {base_url}/sessions/{session}/peers/{peer}/messages` | Forward the binary body to the *other* participant. `X-Magpie-Message-Id` identifies a retry of the same send. | `204`; `404` if not registered |
+| `PUT {base_url}/sessions/{session}/peers/{peer}` | Join or renew membership. An optional binary body is the participant's cached join announcement. | `204`; `409` if the hosting application's admission policy rejects the participant |
+| `POST {base_url}/sessions/{session}/peers/{peer}/messages` | Forward the binary body to all *other* participants. `X-Magpie-Message-Id` identifies a retry of the same send. | `204`; `404` if not registered |
 | `GET {base_url}/sessions/{session}/peers/{peer}/messages?after=N&wait=S` | Wait up to `S` seconds for the first message with sequence number greater than `N`. | `200` with raw bytes and `X-Magpie-Sequence: M`; `204` on timeout; `404` if not registered |
 | `DELETE {base_url}/sessions/{session}/peers/{peer}` | Leave and release the mailbox. | `204` |
 
+The Python reference relay supports cached join announcements. When a peer
+joins with a nonempty PUT body, the relay stores those exact bytes, queues them
+for every existing peer, and queues every existing peer's cached announcement
+for the newcomer. This exchange is atomic with registration. A repeated PUT
+with the same body does not queue duplicates. The relay indicates this support
+with `X-Magpie-Join-Announcements: 1` on the PUT response. A client receiving
+that header can send its `hello` with the PUT and need not repeat a room-wide
+`hello` while waiting for peers. A relay without the header still works: the
+Python client falls back to periodic hello POSTs for discovery. Older clients
+can register with an empty PUT body and continue sending hello by POST.
+
 The server must preserve each recipient's message order. A repeated POST with
 the same `(session, peer, X-Magpie-Message-Id)` must not deliver a duplicate.
-If the other participant has not joined yet, a successful POST may be dropped;
-MAGPIE repeats its initial `hello` until the other peer joins.
+Directed SDP and ICE messages include `to_peer_id`; clients ignore messages
+addressed to other peers. The relay still treats each body as opaque bytes.
 The GET cursor provides retry safety: the server may replay the same message
 until the next GET uses its sequence number in `after`. The server must not
-echo messages to their sender. It can expire abandoned participants after a
-lease period; the client renews membership when it receives `404`.
+echo messages to their sender. The reference relay expires a participant after
+90 seconds without a request. Long-poll GETs continue after a WebRTC link is
+connected and keep its registration alive; no periodic PUT or POST is needed
+for that. A crashed peer eventually expires. A graceful exit sends DELETE.
+If the relay loses its state and returns `404`, the client re-registers with
+its cached announcement.
+
+If a WebRTC link fails, `reconnect=True` causes the affected peer to send one
+directed hello to restart that pair; other healthy links remain in place.
+With `reconnect=False`, the peer does not initiate recovery but can still
+answer a join or recovery announcement from another peer. The HTTP relay does
+not monitor WebRTC link health.
 
 The request body and `200` response body use `application/octet-stream`. They
 are the exact bytes from `WebRtcSignaler.publish`; no JSON envelope or SDP
@@ -53,7 +74,8 @@ optional bearer token for a local demonstration (`MAGPIE_SIGNAL_TOKEN`).
 The FastAPI example allows browser origins on `localhost` and `127.0.0.1` by
 default. Set `MAGPIE_SIGNAL_ALLOWED_ORIGINS` to a comma-separated list of
 other allowed origins when hosting a browser client elsewhere. It handles CORS
-preflight requests and exposes `X-Magpie-Sequence` to browser JavaScript.
+preflight requests and exposes `X-Magpie-Sequence` and
+`X-Magpie-Join-Announcements` to browser JavaScript.
 Production identity, authorization, TLS termination, and shared storage belong
 to the hosting service.
 
@@ -117,9 +139,17 @@ conn = WebRTCConnection.with_http(
     headers={"X-Tenant": "team-a"},
     headers_provider=lambda: {"Authorization": f"Bearer {get_token()}"},
     reconnect=True,
+    role="host",  # use "client" on each caller/viewer
 )
 conn.connect(timeout=30)
 ```
+
+`connect()` waits for the first WebRTC link. Additional peers can join the
+session later; `conn.peer_ids` lists the connected remote IDs. The default
+`role="mesh"` connects every participant to every other participant. A host
+and its clients use `role="host"` and `role="client"` respectively, preventing
+client-to-client connections. Existing two-peer rooms still work without a
+role option.
 
 `headers_provider` is called before each join, send, poll, and leave request,
 so it can return a refreshed token. The send and poll workers may call it

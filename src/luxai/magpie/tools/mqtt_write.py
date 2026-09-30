@@ -18,6 +18,7 @@ except ImportError:
     sys.exit(1)
 
 from luxai.magpie.utils.logger import Logger
+from luxai.magpie.utils.common import get_uinque_id
 from luxai.magpie.nodes.source_node import SourceNode
 from luxai.magpie.transport import MqttConnection, MqttStreamWriter
 from luxai.magpie.frames import DictFrame
@@ -70,6 +71,7 @@ class MqttWrite(SourceNode):
         self.loop = loop
         self.raw = raw
         self._written = 0
+        self._frame_gid = get_uinque_id() if not raw else None
         self._write_time = None
 
         Logger.info(f"{self.name}: topic={self.topic} rate={self.rate}Hz "
@@ -78,7 +80,9 @@ class MqttWrite(SourceNode):
     def process(self):
         self._write_time = time.time()
 
-        payload = self.data if self.raw else DictFrame(value=self.data).to_dict()
+        payload = self.data if self.raw else DictFrame(
+            value=self.data, gid=self._frame_gid, id=self._written
+        ).to_dict()
 
         # Single-shot: write once then exit
         if self.rate is None:
