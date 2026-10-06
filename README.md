@@ -15,7 +15,7 @@
   <a href="https://pypi.org/project/luxai-magpie/">
     <img src="https://img.shields.io/pypi/pyversions/luxai-magpie" alt="Python versions"/>
   </a>
-  <a href="https://luxai-qtrobot.github.io/magpie-doc/">
+  <a href="https://magpie.luxai.com">
     <img src="https://img.shields.io/badge/docs-MAGPIE-118e78" alt="MAGPIE documentation"/>
   </a>
   <a href="https://github.com/luxai-qtrobot/magpie/blob/main/LICENSE">
@@ -466,7 +466,7 @@ conn = WebRTCConnection.with_http(
 conn.connect(timeout=30)
 ```
 
-The [server helper and wire contract](docs/webrtc-http-signaling.md) can be copied into an existing ASGI or WSGI application without installing MAGPIE on the server. The included in-memory mailbox is for one process; a scaled deployment needs shared storage and the application's own authentication.
+The [server helper and wire contract](docs/webrtc-http-signaling.md) can be copied into an existing ASGI or WSGI application without installing MAGPIE on the server. The included in-memory mailbox is for one process; a scaled deployment needs shared storage and the application's own authentication. For a complete public-demo setup, see the [Azure HTTP signaling and Coturn reference deployment](deploy/azure-webrtc/README.md).
 
 ---
 

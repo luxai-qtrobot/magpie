@@ -162,3 +162,7 @@ installed by `pip install "luxai-magpie[webrtc]"`.
 POSTs and long polls, keeping network waits off the aiortc event loop. A
 failed POST is retried with the same message ID and order is preserved. The
 same `WebRTCConnection` stream and RPC classes work without changes.
+
+For a containerized public relay with short-lived Coturn credentials, resource
+limits, Azure Container Apps instructions, and forced-TURN smoke tests, see the
+[Azure WebRTC reference deployment](../deploy/azure-webrtc/README.md).
