@@ -1,36 +1,46 @@
-# Coturn configuration for the public MAGPIE demonstration service.
-# Copy to /etc/turnserver.conf and replace every REPLACE_* value.
+#### LUXAI MAGPIE TURN SERVER ####
 
+# Replace with the VM's Azure private IPv4 address
 listening-port=3478
-listening-ip=REPLACE_AZURE_PRIVATE_IP
-relay-ip=REPLACE_AZURE_PRIVATE_IP
-external-ip=REPLACE_AZURE_PUBLIC_IP/REPLACE_AZURE_PRIVATE_IP
+listening-ip=PRIVATE_IP
+relay-ip=PRIVATE_IP
+external-ip=48.209.57.190/PRIVATE_IP
 
+realm=48.209.57.190
 fingerprint
-realm=magpie-demo
 use-auth-secret
-static-auth-secret=REPLACE_WITH_THE_SAME_SECRET_USED_BY_THE_CONTAINER_APP
+static-auth-secret=<YOUR SECRETE>
 
-# Keep the relay-port range deliberately small for a limited public demo.
 min-port=49160
 max-port=49250
 
-# Allocation and bandwidth safeguards. max-bps and bps-capacity are bytes/s.
 user-quota=4
-total-quota=100
+total-quota=80
+
 max-bps=1000000
 bps-capacity=10000000
 max-allocate-lifetime=600
 stale-nonce=600
 
+# UDP-only service
+no-tcp
+no-tls
+no-dtls
+no-tcp-relay
+
 no-multicast-peers
-no-loopback-peers
 no-cli
 
-# This template exposes TURN over UDP/TCP without TLS because the example uses
-# a public IP address. Add a DNS name, certificate, and tls-listening-port=5349
-# before offering turns: URLs.
-no-tls
+# Prevent TURN access to internal infrastructure
+denied-peer-ip=0.0.0.0-0.255.255.255
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=100.64.0.0-100.127.255.255
+denied-peer-ip=127.0.0.0-127.255.255.255
+denied-peer-ip=168.63.129.16-168.63.129.16
+denied-peer-ip=169.254.0.0-169.254.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+denied-peer-ip=224.0.0.0-255.255.255.255
 
-log-file=/var/log/turnserver/turnserver.log
+log-file=/var/log/coturn.log
 simple-log
