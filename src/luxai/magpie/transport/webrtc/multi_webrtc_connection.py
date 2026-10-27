@@ -14,7 +14,11 @@ from luxai.magpie.serializer.msgpack_serializer import MsgpackSerializer
 from luxai.magpie.utils.logger import Logger
 
 from .http_signaler import HttpSignaler
-from .webrtc_connection import _AIORTC_AVAILABLE, _PeerWebRTCConnection
+from .webrtc_connection import (
+    _AIORTC_AVAILABLE,
+    _PeerWebRTCConnection,
+    _install_webrtc_exception_handler,
+)
 from .webrtc_options import WebRTCOptions
 from .webrtc_signaler import WebRtcSignaler
 
@@ -193,6 +197,7 @@ class WebRTCConnection:
 
     def _run_loop(self) -> None:
         asyncio.set_event_loop(self._loop)
+        _install_webrtc_exception_handler(self._loop)
         try:
             self._loop.run_forever()
         finally:

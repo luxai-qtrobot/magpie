@@ -92,6 +92,7 @@ def main():
 
     fps_window = deque(maxlen=30)
     prev_t = None
+    window_created = False
     window_name = f"WebRTC — {args.session_id}"
 
     try:
@@ -100,8 +101,12 @@ def main():
             try:
                 frame, _ = sub.read(timeout=2.0)
             except TimeoutError:
-                # Check if window was closed
-                if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) == 0:
+                # Before the first frame there is no OpenCV window yet, so a
+                # missing window must not be mistaken for a user closing it.
+                if (
+                    window_created
+                    and cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1
+                ):
                     break
                 continue
 
@@ -124,6 +129,7 @@ def main():
             prev_t = perf_counter()
 
             cv2.imshow(window_name, image)
+            window_created = True
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
 

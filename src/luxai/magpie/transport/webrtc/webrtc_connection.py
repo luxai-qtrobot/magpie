@@ -22,6 +22,7 @@ Architecture overview
 """
 
 import asyncio
+import ipaddress
 import threading
 from queue import Queue
 from typing import Callable, Dict, List, Mapping, Optional
@@ -43,6 +44,7 @@ try:
         AudioStreamTrack,
     )
     from aiortc.contrib.media import MediaStreamError
+    from aioice.stun import Method as StunMethod, TransactionFailed
     import av
     _AIORTC_AVAILABLE = True
 except ImportError:
@@ -50,6 +52,112 @@ except ImportError:
     MediaStreamTrack = object  # fallback bases for type checking
     VideoStreamTrack = object
     AudioStreamTrack = object
+
+
+def _install_webrtc_exception_handler(loop: asyncio.AbstractEventLoop) -> None:
+    """Handle expected asynchronous TURN candidate rejections quietly.
+
+    ``aioice`` schedules TURN sends as detached tasks. Coturn can reject a
+    CHANNEL_BIND for a private or otherwise denied peer address while ICE
+    continues with another candidate pair. Without an exception handler,
+    asyncio prints the non-fatal failure as "Task exception was never
+    retrieved", which looks like an application crash.
+    """
+    previous_handler = loop.get_exception_handler()
+
+    def handle_exception(event_loop, context):
+        exception = context.get("exception")
+        if isinstance(exception, TransactionFailed):
+            response = exception.response
+            error = response.attributes.get("ERROR-CODE")
+            if response.message_method == StunMethod.CHANNEL_BIND and error:
+                code, reason = error
+                if code == 403:
+                    Logger.debug(
+                        "WebRTCConnection: TURN rejected an ICE candidate "
+                        f"during CHANNEL_BIND ({code} - {reason}); "
+                        "continuing with other ICE candidate pairs."
+                    )
+                    return
+
+        if previous_handler is not None:
+            previous_handler(event_loop, context)
+        else:
+            event_loop.default_exception_handler(context)
+
+    loop.set_exception_handler(handle_exception)
+
+
+def _is_public_ice_address(address: str) -> bool:
+    """Return whether an ICE candidate address is publicly routable."""
+    try:
+        return ipaddress.ip_address(address.split("%", 1)[0]).is_global
+    except ValueError:
+        # This also rejects browser mDNS host candidates (``*.local``), which
+        # an Internet TURN relay cannot reach.
+        return False
+
+
+def _sdp_candidate_address(line: str) -> Optional[str]:
+    """Extract the address from an SDP ``a=candidate`` line."""
+    stripped = line.strip()
+    if not stripped.startswith("a=candidate:"):
+        return None
+    fields = stripped[len("a=candidate:"):].split()
+    if len(fields) < 8 or fields[6].lower() != "typ":
+        return None
+    return fields[4]
+
+
+def _filter_remote_sdp_for_relay(sdp: str) -> str:
+    """Drop remote candidates a public TURN relay cannot contact.
+
+    aiortc has no native ``iceTransportPolicy`` option. With a relay-only
+    local candidate, attempting a TURN ChannelBind to a private/mDNS remote
+    candidate produces a Coturn ``403 Forbidden IP``. Public server-reflexive
+    and relay candidates remain available, matching browser relay behaviour.
+    """
+    filtered = []
+    for line in sdp.splitlines(keepends=True):
+        address = _sdp_candidate_address(line)
+        if address is None or _is_public_ice_address(address):
+            filtered.append(line)
+    return "".join(filtered)
+
+
+def _ice_gatherers(pc) -> list:
+    """Collect aiortc ICE gatherers without depending on its private set."""
+    gatherers = []
+    seen = set()
+    for transceiver in pc.getTransceivers():
+        gatherer = transceiver.receiver.transport.transport.iceGatherer
+        if id(gatherer) not in seen:
+            seen.add(id(gatherer))
+            gatherers.append(gatherer)
+    if pc.sctp is not None:
+        gatherer = pc.sctp.transport.transport.iceGatherer
+        if id(gatherer) not in seen:
+            gatherers.append(gatherer)
+    return gatherers
+
+
+async def _gather_relay_only_candidates(pc) -> None:
+    """Gather candidates, then retain TURN relay candidates inside aiortc.
+
+    Pruning the internal candidate list is currently necessary because aiortc
+    1.x does not expose the browser's ``iceTransportPolicy`` setting. Doing it
+    before ``setLocalDescription`` ensures both the generated SDP and the ICE
+    checklist contain relay candidates only.
+    """
+    gatherers = _ice_gatherers(pc)
+    await asyncio.gather(*(gatherer.gather() for gatherer in gatherers))
+    for gatherer in gatherers:
+        connection = gatherer._connection
+        connection._local_candidates = [
+            candidate
+            for candidate in connection._local_candidates
+            if candidate.type == "relay"
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -589,6 +697,7 @@ class _PeerWebRTCConnection:
 
     def _run_loop(self):
         asyncio.set_event_loop(self._loop)
+        _install_webrtc_exception_handler(self._loop)
         try:
             self._loop.run_forever()
         finally:
@@ -781,6 +890,11 @@ class _PeerWebRTCConnection:
         @pc.on("icecandidate")
         async def on_icecandidate(candidate):
             if candidate:
+                if (
+                    self._options.ice_transport_policy == "relay"
+                    and getattr(candidate, "type", None) != "relay"
+                ):
+                    return
                 self._send_signal({
                     "type":         "candidate",
                     "peer_id":      self._peer_id,
@@ -856,6 +970,8 @@ class _PeerWebRTCConnection:
         # Offer carries the FULL union topic lists so both sides share the same
         # m-line index → topic mapping for on_track events.
         offer = await self._pc.createOffer()
+        if self._options.ice_transport_policy == "relay":
+            await _gather_relay_only_candidates(self._pc)
         await self._pc.setLocalDescription(offer)
 
         self._send_signal({
@@ -1308,6 +1424,8 @@ class _PeerWebRTCConnection:
             self._video_recv_idx = 0
 
             sdp = msg.get("sdp", "")
+            if self._options.ice_transport_policy == "relay":
+                sdp = _filter_remote_sdp_for_relay(sdp)
             Logger.debug(f"WebRTCConnection({self._peer_id}): received SDP offer.")
 
             # Ensure we have tracks for every topic in the union — some may be
@@ -1334,6 +1452,8 @@ class _PeerWebRTCConnection:
             await self._flush_pending_ice()
 
             answer = await self._pc.createAnswer()
+            if self._options.ice_transport_policy == "relay":
+                await _gather_relay_only_candidates(self._pc)
             await self._pc.setLocalDescription(answer)
 
             # Echo the full union back so the offerer uses the same topic lists
@@ -1356,6 +1476,8 @@ class _PeerWebRTCConnection:
             self._video_recv_idx = 0
 
             sdp = msg.get("sdp", "")
+            if self._options.ice_transport_policy == "relay":
+                sdp = _filter_remote_sdp_for_relay(sdp)
             Logger.debug(f"WebRTCConnection({self._peer_id}): received SDP answer.")
             await self._pc.setRemoteDescription(
                 RTCSessionDescription(sdp=sdp, type="answer")
@@ -1380,6 +1502,16 @@ class _PeerWebRTCConnection:
                 candidate = candidate_from_sdp(raw)
                 candidate.sdpMid = sdp_mid
                 candidate.sdpMLineIndex = sdp_mline_index
+
+                if (
+                    self._options.ice_transport_policy == "relay"
+                    and not _is_public_ice_address(candidate.ip)
+                ):
+                    Logger.debug(
+                        f"WebRTCConnection({self._peer_id}): ignored non-public "
+                        f"remote ICE candidate {candidate.ip} in relay mode."
+                    )
+                    return
 
                 if self._pc.remoteDescription is None:
                     # Buffer until remote description is set
