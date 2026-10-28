@@ -56,7 +56,21 @@ class ZmqVideoViewer(SinkNode):
         elif isinstance(frame, ImageFrameCV):
             image = frame.to_cv_image()
         elif isinstance(frame, ImageFrameRaw):
-            image = np.frombuffer(frame.data, np.uint8).reshape(frame.height, frame.width, frame.channels)
+            pixel_format = (frame.pixel_format or "").upper()
+            if pixel_format == "RGB565":
+                # ESP32 camera RGB565 is high-byte first; OpenCV expects low-byte first.
+                packed = np.frombuffer(frame.data, np.uint8).reshape(frame.height, frame.width, 2)
+                image = cv2.cvtColor(packed[:, :, ::-1].copy(), cv2.COLOR_BGR5652BGR)
+            elif pixel_format in ("RGB", "RGB888"):
+                rgb = np.frombuffer(frame.data, np.uint8).reshape(frame.height, frame.width, 3)
+                image = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+            elif pixel_format in ("GRAY", "GRAYSCALE"):
+                image = np.frombuffer(frame.data, np.uint8).reshape(frame.height, frame.width)
+            elif pixel_format in ("", "BGR", "BGR888"):
+                image = np.frombuffer(frame.data, np.uint8).reshape(frame.height, frame.width, frame.channels)
+            else:
+                Logger.warning(f"{self.name} unsupported raw pixel format: {pixel_format}")
+                return
         else:
             Logger.warning(f"{self.name} received unsupported frame type: {getattr(frame, 'name', type(frame).__name__)}")
             return
@@ -67,7 +81,7 @@ class ZmqVideoViewer(SinkNode):
             self.fps_values.append(fps)
             avg_fps = int(sum(self.fps_values) / len(self.fps_values))
             image = image.copy()
-            height, width, _ = image.shape
+            height, width = image.shape[:2]
             position = (10, height - 10)
             cv2.putText(
                 image,
